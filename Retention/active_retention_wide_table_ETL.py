@@ -1,7 +1,19 @@
 import urllib.parse
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from state2.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+
+import logging
+import os
+from dotenv import load_dotenv
+load_dotenv()
+def get_db_connection():
+    password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
+    DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
+    engine = create_engine(DATABASE_URL)
+    logging.info("✅ 数据库连接已建立。")
+    return engine
+
 
 def insert_experiment_data_to_wide_active_table(tag):
     try:
@@ -21,16 +33,9 @@ def insert_experiment_data_to_wide_active_table(tag):
         formatted_start_time = start_time.strftime('%Y-%m-%d')
         formatted_end_time = end_time.strftime('%Y-%m-%d')
 
-        # 对密码进行 URL 编码
-        password = urllib.parse.quote_plus("flowgpt@2024.com")
+        engine = get_db_connection()
 
-        # 构造数据库连接 URL
-        DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
-
-        # 创建数据库连接
-        engine = create_engine(DATABASE_URL)
-
-        # 动态构建表名（原表，用于分批数据插入及后续聚合覆盖）
+        # 动态构建表名
         table_name = f"tbl_wide_user_retention_active_{tag}"  # 宽表表名
         report_table_name = f"tbl_report_user_retention_active_{tag}"  # 报告表表名
 
@@ -93,10 +98,10 @@ def insert_experiment_data_to_wide_active_table(tag):
             print(f"🚨 清空数据失败: {e}")
 
         # 使用 CRC32 函数对 user_id 转数字，利用 MOD 方法分批执行插入
-        batch_count = 20  # 可根据数据量调整分批数
+        batch_count = 20
         for i in range(batch_count):
             insert_query = f"""            
-              -- ✅ 改写后的 SQL：防止笛卡尔积 + 精确去重版
+              -- 改写SQL：防止笛卡尔积 + 精确去重
 INSERT INTO {table_name} (dt, variation, new_users, d1, d3, d7, d15, total_assigned)
 SELECT
     base.active_date AS dt,
@@ -193,7 +198,7 @@ ORDER BY base.active_date, e.variation;
         try:
             with engine.connect() as conn:
                 result = conn.execute(text(merge_query))
-                # 使用 .mappings() 获取字典格式结果（需 SQLAlchemy 1.4+）
+                # 使用 .mappings() 获取字典格式结果
                 aggregated_data = result.mappings().all()
             print("✅ 数据聚合成功！")
         except SQLAlchemyError as e:
@@ -234,5 +239,5 @@ ORDER BY base.active_date, e.variation;
 
 # 如果需要运行，可调用函数，例如：
 if __name__ == "__main__":
-    tag = "trans_zh"  # 根据实际标签修改
+    tag = "chat_0519"
     insert_experiment_data_to_wide_active_table(tag)

@@ -3,7 +3,7 @@ import urllib.parse
 import pandas as pd
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
-from state3.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 
 import logging

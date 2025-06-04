@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import sys
 import time
 
-from state2.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 

@@ -1,7 +1,18 @@
 import urllib.parse
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from state2.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+
+import logging
+import os
+from dotenv import load_dotenv
+load_dotenv()
+def get_db_connection():
+    password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
+    DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
+    engine = create_engine(DATABASE_URL)
+    logging.info("✅ 数据库连接已建立。")
+    return engine
 
 
 def insert_experiment_data_to_wide_active_table(tag):
@@ -20,10 +31,8 @@ def insert_experiment_data_to_wide_active_table(tag):
         formatted_start_time = start_time.strftime('%Y-%m-%d')
         formatted_end_time = end_time.strftime('%Y-%m-%d')
 
-        # 数据库连接
-        password = urllib.parse.quote_plus("flowgpt@2024.com")
-        DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
-        engine = create_engine(DATABASE_URL)
+        # 创建数据库连接
+        engine = get_db_connection()
 
         table_name = f"tbl_wide_user_retention_active_{tag}"
 

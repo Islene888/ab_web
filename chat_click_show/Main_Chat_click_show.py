@@ -1,6 +1,6 @@
 import time
-from state3.chat_click_show.active import  Chat_active, click_ratio, bot_chat_start_ratio, Time_spent
-from state3.chat_click_show.explore import explorec_hat_click_show, avg_show, Chat_explore, click_chat_ratio, \
+from chat_click_show.active import  Chat_active, click_ratio, bot_chat_start_ratio, Time_spent
+from chat_click_show.explore import explorec_hat_click_show, avg_show, Chat_explore, click_chat_ratio, \
     home_insert
 
 

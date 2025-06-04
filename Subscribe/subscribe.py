@@ -2,6 +2,7 @@ import urllib.parse
 import pandas as pd
 from sqlalchemy import create_engine, text
 import warnings
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 from datetime import datetime
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -22,7 +23,6 @@ def get_db_connection():
 
 def insert_subscribe_metrics_by_variation(tag):
     print(f"开始获取实验订阅数据（按 variation 汇总），标签: {tag}")
-    from state2.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
     experiment_data = get_experiment_details_by_tag(tag)
     if not experiment_data:
         print(f"没有找到符合标签 '{tag}' 的实验数据！")
@@ -166,4 +166,4 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    main("trans_pt")
+    main("chat_0519")

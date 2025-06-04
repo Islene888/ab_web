@@ -1,10 +1,10 @@
 import time  # 如果后续不使用，可以移除
 
-from state3.Retention import retention_report_table_ETL, active_retention_wide_table_ETL, \
+from Retention import retention_report_table_ETL, active_retention_wide_table_ETL, \
     retention_report_table_active_ETL, First_Retention_overall, Active_Retention_overall, test_country
-from state3.Retention.active_retention_wide_table_ETL import insert_experiment_data_to_wide_active_table
-from state3.Retention.retention_wide_table_ETL import insert_experiment_data_to_wide_table
-from state3.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from Retention.active_retention_wide_table_ETL import insert_experiment_data_to_wide_active_table
+from Retention.retention_wide_table_ETL import insert_experiment_data_to_wide_table
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 
 def run_experiment_data_etl(tag):
@@ -31,5 +31,5 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    tag = "recommendation_mobil"
+    tag = "chat_0519"
     main(tag)

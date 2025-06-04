@@ -2,7 +2,8 @@ import urllib.parse
 import pandas as pd
 from sqlalchemy import create_engine, text
 import warnings
-from state3.growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+
+from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -166,4 +167,4 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    main("chat_0416")
+    main("chat_0519")
