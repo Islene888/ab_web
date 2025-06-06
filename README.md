@@ -113,7 +113,7 @@ python main_all.py
 
 ### Q1: Is a tag the same as an experiment?
 
-No. A tag represents a **business domain** (e.g., retention, chat\_entry), not a single experiment. The system will pull all related experiments under this tag and use the **latest phase only** for analysis.
+No. A tag represents a **business domain** (e.g., chat_model、 recommendation ), not a single experiment. The system will pull all related experiments under this tag and use the **latest phase only** for analysis.
 
 ### Q2: Will each run generate multiple results?
 
@@ -241,7 +241,7 @@ python main_all.py
 
 ### Q1：一个 tag 是不是一个实验？
 
-不是。一个 tag 表示一个业务模块或团队（如 retention、chat\_entry），系统会基于该 tag 自动检索多个实验，并使用最近的 phase 分析。
+不是。一个 tag 表示一个业务模块或团队（如 chat_model、 recommendation ），系统会基于该 tag 自动检索多个实验，并使用最近的 phase 分析。
 
 ### Q2：每次跑分析会生成多条记录吗？
 
