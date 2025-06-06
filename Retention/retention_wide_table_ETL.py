@@ -241,5 +241,5 @@ ORDER BY u.first_visit_date, e.variation;
         print(f"🚨 执行失败: {e}")
 
 if __name__ == "__main__":
-    tag = "chat_0519"
+    tag = "mobile"
     insert_experiment_data_to_wide_table(tag)

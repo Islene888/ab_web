@@ -7,8 +7,6 @@ from datetime import datetime
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
-
 import logging
 import os
 from dotenv import load_dotenv

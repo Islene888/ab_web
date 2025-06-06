@@ -109,11 +109,11 @@ def fetch_and_save_experiment_data():
                     "control_group_key": 0
                 })
                 experiments_data.append({
-                    "experiment_name": "mobile-chat-vanilla-0519",
-                    "tags": "1",
-                    "phase_start_time": datetime(2025,5,18,0,00,00),
-                    "phase_end_time": datetime(2025,5,26,12,00,00),
-                    "number_of_variations": 3,
+                    "experiment_name": "chat-generate-image",
+                    "tags": "mobile",
+                    "phase_start_time": datetime(2025,5,16,0,00,00),
+                    "phase_end_time": datetime(2025,6,5,12,00,00),
+                    "number_of_variations": 2,
                     "control_group_key": 0
                 })
                 experiments_data.append({

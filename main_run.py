@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", category=SAWarning)
 fetch_and_save_experiment_data()
 
 # 定义实验标签
-tag = 'chat_0519'
+tag = 'mobile'
 
 
 # 1.留存计算
