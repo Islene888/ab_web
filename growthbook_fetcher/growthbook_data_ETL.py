@@ -1,14 +1,19 @@
+import os
+
 import requests
 import pandas as pd
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import urllib.parse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def fetch_and_save_experiment_data():
     # 设置 GrowthBook API URL 和 Bearer Token
     GROWTHBOOK_API_URL = "https://api.growthbook.io/api/v1/experiments"
-    GROWTHBOOK_API_KEY = "secret_user_co34d1yJbEzlafF7ZAtrLYsd38u9oe6FLVYAWVEUhFY"
+    GROWTHBOOK_API_KEY = os.getenv("GROWTHBOOK_API_KEY")
 
     # 设置 Authorization 头部进行 Bearer 身份验证
     headers = {

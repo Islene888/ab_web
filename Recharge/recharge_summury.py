@@ -133,4 +133,4 @@ def main(tag):
         write_results_to_db(result_df, tag, engine)
 
 if __name__ == "__main__":
-    main("trans_es")
+    main("chat_0519")
