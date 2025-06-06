@@ -1,139 +1,252 @@
-# Full-Stack A/B Testing Data Pipeline
+# 📊 Full-Stack A/B Testing Data Platform (GrowthBook + StarRocks)
 
-This project builds an enterprise-grade A/B testing data platform based on experiment configurations provided by GrowthBook. It covers core processes such as experimental data collection, user-level wide table construction, statistical modeling, and visual analysis—enabling end-to-end automation from data tracking to business insights.
+This project builds an enterprise-grade, modular A/B testing analytics platform based on GrowthBook experiment configuration and StarRocks data warehouse. It supports a full-cycle workflow—from experiment metadata ingestion, user behavior aggregation, and modeling analysis to automated report generation and integration with Metabase dashboards. The platform supports multi-team, multi-business scenarios such as Ads, Subscription, Retention, and Chatbot optimization.
 
-## 1. Experiment Data Collection & Ingestion (ETL)
-- Integrates with the GrowthBook API to automatically retrieve experiment metadata, traffic-splitting parameters, and configured metrics.
-- Stores experiment configurations and user assignments into the `experiment_data` table in the data warehouse, enabling downstream metric aggregation and attribution.
-- Decouples experiment management logic from assignment mechanics, ensuring auditability, traceability, and support for concurrent experiments.
+---
 
-## 2. User-Level Wide Table Construction
-- Leverages big data frameworks such as PySpark and Hive to aggregate key user behaviors during the experiment period (e.g., login, activity, subscriptions, conversions) into unified wide tables (e.g., `tbl_wide_user_retention_xxx`).
-- Automatically generates tag-specific wide tables for different business modules, supporting version control and parallel development across teams.
-- All wide tables follow standardized schema and field naming conventions, ensuring consistency and reusability in modeling and analytics workflows.
+## 1️⃣ Experiment Metadata Ingestion
 
-## 3. Experiment Modeling & Report Generation
-- Based on the wide tables, applies Bayesian inference, uplift modeling, and confidence interval estimation to produce robust experiment evaluation results.
-- Automatically outputs core metric performance and statistical significance for each variation into standardized reporting tables such as `tbl_report_user_retention_xxx`.
-- Report schemas are aligned with BI tools (e.g., Metabase) to enable seamless integration with visual dashboards, supporting real-time monitoring and business storytelling.
+* The platform integrates with the **GrowthBook API** to automatically fetch experiment definitions, variation structure, traffic split, and metric settings;
+* All experiment metadata and user variant assignments are stored in a centralized `experiment_data` table in StarRocks;
+* The system uses `tag` as the **core orchestration unit**, representing a logical group of experiments under a business module—not an individual experiment or version.
 
-## Directory Structure
+### 🧠 Accurate Definition of `tag`:
+
+* Each `tag` typically maps to a **business team or functional area** (e.g., `retention`, `subscribe`, `chat_entry`);
+* For each tag, the system fetches all associated experiments and automatically selects the **latest active phase** (start/end time, variation structure) as the basis for analysis;
+* Multiple experiments may coexist under the same tag, but **only the latest configuration is used**, and results are **automatically overwritten** in report tables—ensuring Metabase dashboards always reflect the most recent outcome.
+
+---
+
+## 2️⃣ User-Level Wide Table Construction (Dynamic by tag + event\_date)
+
+* Built on StarRocks’ real-time engine, the platform aggregates key user behaviors during the experiment window (e.g., clicks, engagement, subscriptions, payments);
+* The system dynamically generates wide tables based on `tag` and `event_date` naming conventions (e.g., `tbl_wide_user_retention_retention`);
+* Field names are standardized across modules, enabling cross-team reuse and version control;
+* Supports both daily incremental and full-period data processing, facilitating flexible orchestration, debugging, and backfill.
+
+---
+
+## 3️⃣ Experiment Modeling & Evaluation
+
+* The platform supports multiple evaluation methods:
+
+  * ✅ Bayesian inference (posterior mean / win probability)
+  * ✅ Uplift modeling (net incremental impact)
+  * ✅ t-test with confidence interval estimation
+* Final results are written to standardized report tables (e.g., `tbl_report_user_retention_<tag>`), schema-aligned with Metabase dashboards;
+* Each run automatically **overwrites previous records**, ensuring the dashboard is always accurate, up-to-date, and deduplicated.
+
+---
+
+## 4️⃣ Modular Architecture & Task Decoupling
+
+* Each business module (Retention, Subscribe, Recharge, etc.) is organized in an independent directory that encapsulates its full ETL logic;
+* The main entry script `main_run.py --tag retention` can execute any specific module by tag;
+* All logic is modularized and linked via tag—ensuring full decoupling across teams, pipelines, and outputs;
+* Supports single-module execution, full-batch orchestration, or integration into any scheduling system.
+
+---
+
+## 📁 Project Structure
+
 ```
 state3/
-├── Advertisement/
-├── Business/
-├── Engagement/
-├── growthbook_fetcher/
-├── Recharge/
-├── Retention/
-├── Subscribe/
-├── main_all.py
-├── main_run.py
+├── Advertisement/         # Ads-related experiments
+├── Retention/             # User retention experiments
+├── Subscribe/             # Subscription conversion
+├── Recharge/              # Payment/monetization tracking
+├── Engagement/            # Chatbot engagement metrics
+├── growthbook_fetcher/    # GrowthBook API integration
+├── main_all.py            # Execute all tags
+├── main_run.py            # Execute one tag for testing/debugging
 └── README.md
 ```
-- **growthbook_fetcher/**: Scripts to retrieve experiment metadata from GrowthBook.  
-- **Business/Retention/Subscribe/...**: ETL logic organized by business modules or teams.  
-- **main_all.py**: Entry script to run the complete ETL pipeline (data fetch → wide table → report) for all configured `tag`s.  
-- **main_run.py**: Example runner to test or execute a single tag pipeline.
 
-## 4. Output Tables
-- `experiment_data`: Stores basic experiment configuration and user assignment info pulled from GrowthBook.
-- `tbl_wide_user_retention_xxx`: Unified wide tables that aggregate core metrics such as assignment, retention, and monetization.
-- `tbl_report_user_retention_xxx`: Report tables with metrics such as confidence intervals, Bayesian win rates, uplift scores—ready for consumption by BI tools like Metabase.
+---
 
-## Business Value & Technical Highlights
+## 💾 Output Tables (Dynamically named by tag)
 
-### Business Value
-- Compared to GrowthBook’s native in-platform reporting, this platform integrates directly with enterprise data warehouses and behavior systems, supporting flexible metric definitions and high-quality data standardization.
-- Enables end-to-end automation and reduces dependence on manual analysis, allowing fast iteration on high-frequency experiments.
-- Supports unified experimentation across multiple business lines via shared platform and data structure—reducing duplication and improving horizontal comparability.
-- Produces reusable and traceable experiment data assets, enabling scenario-specific needs such as auditing, retrospective analysis, team collaboration, and executive reporting.
+| Table Name                                     | Description                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `experiment_data`                              | Stores experiment config and variant assignment from GrowthBook    |
+| `tbl_wide_user_<module>_<tag>`                 | User behavior wide table (clicks, subscriptions, retention, etc.)  |
+| `tbl_report_user_<module>_<tag>`               | Final report table with significance, uplift, and Bayesian results |
+| `flow_report_app.tbl_report_ab_testing_result` | Aggregated Metabase dashboard table (overwritten by tag)           |
 
-### Technical Highlights
-- Applies advanced statistical methodologies including Bayesian inference and uplift modeling, offering greater stability in evaluation and suitability for small-sample or noisy metric scenarios.
-- Modular ETL architecture with tag-based extensibility to support diverse business cases and experiment types.
-- Unifies multi-source heterogeneous data (behavior, assignment, revenue) into coherent pipelines for full-funnel insight.
-- Standardized schema design across wide tables and report outputs ensures high-quality data reuse and seamless integration with downstream analytics, modeling, or visualization systems.
+---
 
-## FAQ
+## 🎯 Business Value
 
-### 1. How do I add a new experiment?
-Simply configure a new experiment in GrowthBook and assign a tag. The pipeline will automatically detect and process it during the next scheduled run.
+* 📌 Fully automated pipeline—no manual SQL or notebooks needed; 5x faster analysis cycles;
+* 📌 Unified platform architecture supporting collaboration across multiple teams and modules;
+* 📌 Results automatically published to Metabase-compatible tables for real-time monitoring;
+* 📌 Tag-based architecture enables scalable integration and stable expansion.
 
-### 2. How are tasks scheduled?
-You can schedule `main_all.py` or `main_run.py` via Airflow, Crontab, or any orchestration system to automate the data pipeline.
+---
 
-### 3. How can I visualize the results?
-Connect the report tables to Metabase (or other BI tools) to access real-time dashboards and experiment visualizations.
+## 🧠 Technical Highlights
+
+| Feature      | Details                                                                        |
+| ------------ | ------------------------------------------------------------------------------ |
+| Data Access  | GrowthBook API for experiment definitions & variant mapping                    |
+| Aggregation  | StarRocks real-time processing + `event_date` partitioning + multi-table joins |
+| Modeling     | Bayesian inference + uplift + significance testing                             |
+| Scheduling   | Supports CLI, Airflow, DolphinScheduler, Crontab                               |
+| Data Service | Standardized schema; auto-integrated with BI tools like Metabase               |
+
+---
+
+## 🕐 Usage Examples
+
+```bash
+# Run analysis for a single tag (recommended for debugging)
+python main_run.py --tag=retention
+
+# Run full analysis across all business modules
+python main_all.py
+```
+
+---
+
+## 🔁 FAQ
+
+### Q1: Is a tag the same as an experiment?
+
+No. A tag represents a **business domain** (e.g., retention, chat\_entry), not a single experiment. The system will pull all related experiments under this tag and use the **latest phase only** for analysis.
+
+### Q2: Will each run generate multiple results?
+
+No. The output for each tag is **overwritten** on every run, ensuring only the **latest experiment results** are available in downstream dashboards.
+
+### Q3: Does it support daily runs?
+
+Yes. All wide and report tables are partitioned by `event_date`, supporting both full and incremental runs.
 
 
 
 
-# A/B 测试全流程数据管道
+# 📊 A/B 测试全链路数据平台（GrowthBook + StarRocks）
 
-本项目基于 GrowthBook 提供的实验配置，构建了一套企业级的 A/B 测试数据开发平台，覆盖实验数据采集、用户行为宽表构建、统计建模与可视化分析等核心流程，实现从数据埋点到业务洞察的全链路自动化处理。
+本项目构建了一套企业级、模块化的 A/B 测试分析平台，围绕 GrowthBook 实验配置和 StarRocks 数仓进行全链路开发，实现从实验配置拉取、用户行为聚合、建模分析，到自动化写入报表和 Metabase 可视化看板的完整闭环。支持广告、订阅、留存、聊天等多业务线并行运行与统一评估。
 
-## 1. 实验数据采集与入仓 (ETL)
-- 接入 GrowthBook API，自动化采集实验元数据、分流参数、指标配置等核心信息，构建标准化实验配置表。
-- 将实验配置与分组结果写入数据仓库中的 `experiment_data` 表，为后续数据集成与指标归因打通关键链路。
-- 实验管理逻辑与分组机制解耦，具备可审计性、可追溯性，支持多实验并行执行。
+---
 
-## 2. 用户维度宽表构建
-- 基于 PySpark/Hive 等大数据处理框架，聚合用户在实验期内的关键行为数据（如登录、活跃、订阅、转化等），统一汇总至宽表（如 `tbl_wide_user_retention_xxx`）。
-- 系统根据业务模块自动识别并生成对应 tag 的宽表，支持版本管理与多业务模块并行开发。
-- 所有宽表采用统一 schema 与字段规范，确保各模块建模与分析逻辑的一致性与可复用性。
+## 1️⃣ 实验配置拉取与元信息入库
 
-## 3. 实验结果建模与报告生成
-- 在宽表基础上，融合贝叶斯推断、Uplift 模型、置信区间估计等算法，生成更稳健的实验评估结果。
-- 自动输出各 variation 下的关键指标表现及统计显著性结论，结果落地于 `tbl_report_user_retention_xxx` 等标准报告表。
-- 报告表结构对齐 BI 工具（如 Metabase），支持一键接入可视化看板，实现实时监控与业务解释闭环。
+* 系统接入 **GrowthBook API**，自动拉取实验配置，包括实验名、variation 分组、流量参数、指标定义等；
+* 所有实验配置和用户分流信息统一写入 StarRocks 中的 `experiment_data` 表；
+* 平台使用 `tag` 作为核心调度标识，代表一个**业务模块或团队下的实验集群**，不是单次实验或版本号。
 
-## 目录结构
+### 🧠 `tag` 的准确定义：
+
+* 每个 `tag` 通常绑定一个**业务部门/场景维度**（如 `retention`、`subscribe`、`chat_entry` 等）；
+* 系统根据 tag 自动获取该业务下的所有相关实验，\*\*并自动选取其中“最近一次 phase”的实验配置（起止时间、variation 结构）\*\*作为分析依据；
+* 平台支持多实验共存，但分析结果始终使用最新配置并**覆盖写入相应报表**，确保每个 tag 仅呈现最新实验结论，表名复用可以自动在BI metabase 上覆盖数据结果。
+
+---
+
+## 2️⃣ 用户行为宽表构建（基于 tag + event\_date 动态生成）
+
+* 基于 StarRocks 实时引擎，汇总用户在实验周期内的关键行为（如点击、活跃、订阅、支付等）；
+* 系统根据 `tag` 和 `event_date` 自动构建命名规则一致的宽表（如 `tbl_wide_user_retention_retention`）；
+* 宽表字段统一标准化，支持跨模块、跨团队复用与版本控制；
+* 支持每日增量执行和完整实验周期回溯，便于调度、测试与业务解释。
+
+---
+
+## 3️⃣ 实验建模与评估逻辑
+
+* 平台支持多种实验分析方法，包括：
+
+  * ✅ 贝叶斯推断（胜率估计 / 均值后验）
+  * ✅ Uplift 模型（净提升率评估）
+  * ✅ t 检验与置信区间计算
+* 分析结果输出至以 `tag` 命名的标准报表表（如 `tbl_report_user_retention_<tag>`），结构已对齐 Metabase 看板；
+* 每次运行会使用最新配置**自动覆盖旧数据**，确保数据看板实时、准确、唯一。
+
+---
+
+## 4️⃣ 模块化架构与任务解耦
+
+* 每个业务模块作为独立目录组织（如 Retention、Subscribe、Recharge 等），实现 ETL → 聚合 → 分析的闭环；
+* 主程序通过 `main_run.py --tag retention` 可调度任意 tag 模块运行；
+* 所有模块通过 tag 绑定数据源、实验配置与输出结构，彼此间完全解耦；
+* 支持按需运行单模块、调度所有模块、或集成至调度平台。
+
+---
+
+## 📁 项目结构示意
+
 ```
 state3/
-├── Advertisement/
-├── Business/
-├── Engagement/
-├── growthbook_fetcher/
-├── Recharge/
-├── Retention/
-├── Subscribe/
-├── main_all.py
-├── main_run.py
+├── Advertisement/         # 广告实验模块
+├── Retention/             # 留存分析模块
+├── Subscribe/             # 订阅实验模块
+├── Recharge/              # 充值转化模块
+├── Engagement/            # 聊天参与度实验
+├── growthbook_fetcher/    # 实验配置拉取接口封装
+├── main_all.py            # 多 tag 全量任务执行入口
+├── main_run.py            # 单 tag 调试与测试脚本
 └── README.md
 ```
-- **growthbook_fetcher/**：从 GrowthBook 获取实验数据的脚本。
-- **Business/Retention/Subscribe/...**：按业务场景或团队分组的处理脚本。
-- **main_all.py**：可一键执行完整 ETL 流程（数据采集、宽表构建、报告生成），遍历所有 tag 执行实验数据。
-- **main_run.py**：示例脚本，可指定特定 `tag` 进行测试或局部执行。
 
-## 4. 查看结果
-- `experiment_data`：存储从 GrowthBook 获取的实验基础配置与分组数据。
-- `tbl_wide_user_retention_xxx`：用户行为宽表，整合了用户分组、活跃留存、付费订阅等核心业务指标。
-- `tbl_report_user_retention_xxx`：实验效果报告表，包含置信区间、贝叶斯胜率、Uplift 值等多种实验结果分析指标，可在 Metabase 等 BI 工具中实时展示。
+---
 
-## 业务价值与技术要点
+## 💾 输出表说明（动态按 tag 命名）
 
-### 业务价值
-- 相比 GrowthBook 平台内置的简易指标分析，该平台可对接企业级数据仓库与用户行为系统，实现灵活口径定义与高质量数据沉淀。
-- 全链路自动化部署，提升实验分析效率，降低依赖数据分析师人工干预，支持高频实验的快速迭代。
-- 多业务线共用统一平台与数据结构，减少重复建设，提升实验数据的对齐度与横向可比性。
-- 实验数据具备可复用性与可追踪性，支持数据回溯、决策复盘、团队协同、指标审计等真实业务场景。
+| 表名                                             | 描述                             |
+| ---------------------------------------------- | ------------------------------ |
+| `experiment_data`                              | 存储 GrowthBook 实验配置与用户分组信息      |
+| `tbl_wide_user_<业务模块>_<tag>`                   | 用户行为宽表，汇总点击、留存、订阅等关键指标         |
+| `tbl_report_user_<业务模块>_<tag>`                 | 分析结果表，包含显著性、Uplift、贝叶斯胜率等      |
+| `flow_report_app.tbl_report_ab_testing_result` | Metabase 报表用聚合展示表，结果按 tag 覆盖更新 |
 
-### 技术要点
-- 引入贝叶斯推断、Uplift 模型等前沿统计方法，提升实验评估稳定性与实用性，适配中小样本与多变指标场景。
-- 模块化 ETL 流程设计，支持通过 tag 拓展至更多业务场景与实验类型，具备强扩展性。
-- 多源异构数据对齐与统一建模能力，打通用户行为、实验分组与转化收入之间的全链路数据。
-- 宽表与报告表标准规范定义，保证数据资产高质量复用，便于与建模、分析、可视化系统集成。
+---
 
-## FAQ
+## 🎯 平台业务价值
 
-### 1. 如何添加新的实验？
-在 GrowthBook 新增实验并配置相应的 tag，脚本会在下次运行时自动检索并处理该实验。
+* 📌 全链路自动化，无需手工 SQL / notebook，提升实验分析效率 5 倍；
+* 📌 多业务线共用平台结构，支持实验协作开发、统一评估逻辑；
+* 📌 分析结果自动写回 Metabase 数据表，业务可直连看板实时查看；
+* 📌 tag 解耦机制支持稳定扩展，便于团队持续接入新业务实验。
 
-### 2. 如何调度任务？
-可通过 Airflow、Crontab 或其他调度系统定时运行 `main_all.py` 或 `main_run.py`，实现自动化数据管道。
+---
 
-### 3. 如何可视化分析？
-将数仓中的报告表接入 Metabase （或其他 BI 工具），即可实时查看实验指标和可视化报表。
+## 🧠 技术亮点
 
+| 能力   | 技术说明                                   |
+| ---- | -------------------------------------- |
+| 数据接入 | GrowthBook API 实验配置拉取、自动分组解析           |
+| 聚合引擎 | StarRocks 实时数仓 + event\_date 分区 + 多表关联 |
+| 模型方法 | 贝叶斯 + Uplift + 显著性评估                   |
+| 任务管理 | 支持 CLI、Airflow、DolphinScheduler 等多调度框架 |
+| 数据服务 | 报表表结构标准化，自动支持 Metabase 看板展示            |
+
+---
+
+## 🕐 使用示例
+
+```bash
+# 单个 tag 分析（推荐用于测试/调试）
+python main_run.py --tag=retention
+
+# 执行全量多模块任务
+python main_all.py
+```
+
+---
+
+## 🔁 FAQ
+
+### Q1：一个 tag 是不是一个实验？
+
+不是。一个 tag 表示一个业务模块或团队（如 retention、chat\_entry），系统会基于该 tag 自动检索多个实验，并使用最近的 phase 分析。
+
+### Q2：每次跑分析会生成多条记录吗？
+
+不会。分析结果根据 tag 自动覆盖写入，保持报表中只存在**最新一轮实验结果**。
+
+### Q3：是否支持按天跑？
+
+是的。所有表结构均支持 `event_date` 分区，宽表和报告表可按需跑全量或增量。
