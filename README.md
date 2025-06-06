@@ -126,6 +126,11 @@ Yes. All wide and report tables are partitioned by `event_date`, supporting both
 
 
 
+
+
+
+
+
 # 📊 A/B 测试全链路数据平台（GrowthBook + StarRocks）
 
 本项目构建了一套企业级、模块化的 A/B 测试分析平台，围绕 GrowthBook 实验配置和 StarRocks 数仓进行全链路开发，实现从实验配置拉取、用户行为聚合、建模分析，到自动化写入报表和 Metabase 可视化看板的完整闭环。支持广告、订阅、留存、聊天等多业务线并行运行与统一评估。
