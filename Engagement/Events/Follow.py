@@ -93,7 +93,6 @@ def main(tag):
             GROUP BY user_id, variation_id
         ) a ON f.user_id = a.user_id
         WHERE f.ingest_timestamp BETWEEN '{start_time_str}' AND '{end_time_str}'
-          AND f.user_id NOT LIKE 'test%'  -- 示例：排除测试账号
         GROUP BY DATE(f.ingest_timestamp), a.variation_id
     ) AS raw
     {date_filter_clause};

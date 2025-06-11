@@ -16,11 +16,11 @@ import warnings
 from sqlalchemy.exc import SAWarning
 warnings.filterwarnings("ignore", category=SAWarning)
 
-# 获取并保存 GrowthBook 实验数据
+# 获取并保存 GzrowthBook 实验数据
 fetch_and_save_experiment_data()
 
 # 定义实验标签
-tag = 'mobile'
+tag = 'chat_0519'
 
 
 # 1.留存计算

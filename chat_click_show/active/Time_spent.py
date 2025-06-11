@@ -6,24 +6,22 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 import warnings
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-
-import logging
-import os
-from dotenv import load_dotenv
 load_dotenv()
+
+
 def get_db_connection():
     password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
     DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
     engine = create_engine(DATABASE_URL)
     logging.info("✅ 数据库连接已建立。")
     return engine
+
 
 def insert_time_spent_data(tag):
     logging.info(f"🚀 开始获取实验数据，标签：{tag}")
@@ -33,21 +31,20 @@ def insert_time_spent_data(tag):
         return None
 
     experiment_name = experiment_data["experiment_name"]
-    start_time = experiment_data["phase_start_time"]
-    end_time = experiment_data["phase_end_time"]
-    logging.info(f"📝 实验名称：{experiment_name}，实验时间：{start_time} 至 {end_time}")
+    start_time_full = experiment_data["phase_start_time"]
+    end_time_full = experiment_data["phase_end_time"]
+    logging.info(f"📝 实验名称：{experiment_name}，实验时间：{start_time_full} 至 {end_time_full}")
 
-    start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
-    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
-    start_day_str = start_time.strftime("%Y-%m-%d")
-    end_day_str = end_time.strftime("%Y-%m-%d")
+    # Ensure start and end times are truncated to the day for iteration
+    start_day = start_time_full.date()
+    end_day = end_time_full.date()
 
     engine = get_db_connection()
     table_name = f"tbl_report_time_spent_{tag}"
 
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
-        event_date VARCHAR(255),
+        event_date DATE,
         variation VARCHAR(255),
         total_time_minutes DOUBLE,
         unique_users INT,
@@ -55,58 +52,71 @@ def insert_time_spent_data(tag):
         experiment_name VARCHAR(255)
     );
     """
-    truncate_query = f"TRUNCATE TABLE {table_name};"
-
-    insert_query = f"""
-    INSERT INTO {table_name} (event_date, variation, total_time_minutes, unique_users, avg_time_spent_minutes, experiment_name)
-    WITH session_agg AS (
-        SELECT
-            s.user_id,
-            s.event_date,
-            SUM(TIMESTAMPDIFF(MINUTE, s.start_time, s.end_time)) AS total_minutes
-        FROM flow_event_info.tbl_app_session_info s
-        WHERE s.event_date BETWEEN '{start_day_str}' AND '{end_day_str}'
-        GROUP BY s.user_id, s.event_date
-    ),
-    experiment_var AS (
-        SELECT user_id, variation_id
-        FROM (
-            SELECT
-                user_id,
-                variation_id,
-                ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY timestamp_assigned) AS rn
-            FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-            WHERE experiment_id = '{experiment_name}'
-              AND timestamp_assigned BETWEEN '{start_time_str}' AND '{end_time_str}'
-        ) t
-        WHERE rn = 1
-    ),
-    joined_result AS (
-        SELECT
-            sa.event_date,
-            ev.variation_id AS variation,
-            SUM(sa.total_minutes) AS total_time_minutes,
-            COUNT(DISTINCT sa.user_id) AS unique_users,
-            ROUND(SUM(sa.total_minutes) / NULLIF(COUNT(DISTINCT sa.user_id), 0), 2) AS avg_time_spent_minutes,
-            '{experiment_name}' AS experiment_name
-        FROM session_agg sa
-        JOIN experiment_var ev ON sa.user_id = ev.user_id
-        GROUP BY sa.event_date, ev.variation_id
-    )
-    SELECT *
-    FROM joined_result
-    WHERE event_date > '{start_day_str}' AND event_date < '{end_day_str}'
-    ORDER BY event_date, variation;
-    """
 
     with engine.connect() as conn:
         conn.execute(text("SET query_timeout = 30000;"))
         conn.execute(text(create_table_query))
-        conn.execute(text(truncate_query))
-        conn.execute(text(insert_query))
-        logging.info(f"✅ 数据插入完成（排除首尾），表名：{table_name}")
+        conn.execute(text(f"TRUNCATE TABLE {table_name};"))  # Truncate once before daily insertions
 
+    current_day = start_day
+    while current_day <= end_day:
+        current_day_str = current_day.strftime("%Y-%m-%d")
+        logging.info(f"⚡️ 正在处理日期：{current_day_str}")
+
+        # The WHERE clause for event_date in the subqueries should reflect the specific day
+        # And the experiment_id should be filtered by the *full* experiment duration for consistent user assignment
+        insert_query = f"""
+        INSERT INTO {table_name} (event_date, variation, total_time_minutes, unique_users, avg_time_spent_minutes, experiment_name)
+        WITH session_agg AS (
+                SELECT
+                  DATE(event_date) AS event_date,                                 
+                  user_id,                                      
+                  ROUND(SUM(duration) / 1000 / 60, 2) AS total_time_minutes  
+                FROM
+                  flow_event_info.tbl_app_session_info
+                WHERE DATE(event_date) = '{current_day_str}' -- Filter for the current day
+                GROUP BY
+                  DATE(event_date),
+                  user_id
+        ),
+        experiment_var AS (
+            SELECT user_id, variation_id
+            FROM (
+                SELECT
+                    user_id,
+                    variation_id,
+                    ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_date) AS rn
+                FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                WHERE experiment_id = '{experiment_name}'
+                and event_date = '{current_day_str}'
+            ) t
+            WHERE rn = 1
+        )
+        SELECT
+            sa.event_date,
+            ev.variation_id AS variation,
+            SUM(sa.total_time_minutes) AS total_time_minutes,
+            COUNT(DISTINCT sa.user_id) AS unique_users,
+            ROUND(SUM(sa.total_time_minutes) / NULLIF(COUNT(DISTINCT sa.user_id), 0), 2) AS avg_time_spent_minutes,
+            '{experiment_name}' AS experiment_name
+        FROM session_agg sa
+        JOIN experiment_var ev ON sa.user_id = ev.user_id
+        GROUP BY sa.event_date, ev.variation_id
+        ORDER BY sa.event_date, ev.variation_id;
+        """
+
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(insert_query))
+            logging.info(f"✅ 日期 {current_day_str} 数据插入完成，表名：{table_name}")
+        except Exception as e:
+            logging.error(f"❌ 插入日期 {current_day_str} 数据失败: {e}")
+
+        current_day += timedelta(days=1)
+
+    logging.info(f"✅ 所有日期的数据插入完成，表名：{table_name}")
     return table_name
+
 
 def main(tag):
     logging.info("✨ 主流程开始执行。")
@@ -116,10 +126,11 @@ def main(tag):
         return
     logging.info("✅ 主流程执行完毕。")
 
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0519"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

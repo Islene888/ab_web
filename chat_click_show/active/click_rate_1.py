@@ -78,13 +78,13 @@ def main(tag: str):
                 WHERE rn = 1
             ),
             base_show AS (
-                SELECT user_id, event_date, COUNT(*) AS show_times
+                SELECT user_id, event_date, COUNT(distinct event_id) AS show_times
                 FROM flow_event_info.tbl_app_event_show_prompt_card
                 WHERE event_date = '{current_date}'
                 GROUP BY user_id, event_date
             ),
             base_view AS (
-                SELECT user_id, event_date, COUNT(*) AS click_times
+                SELECT user_id, event_date, COUNT(distinct event_id) AS click_times
                 FROM flow_event_info.tbl_app_event_bot_view
                 WHERE event_date = '{current_date}'
                 GROUP BY user_id, event_date
@@ -141,6 +141,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0519"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

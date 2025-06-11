@@ -1,7 +1,8 @@
 import time
-from chat_click_show.active import  Chat_active, click_ratio, bot_chat_start_ratio, Time_spent
-from chat_click_show.explore import explorec_hat_click_show, avg_show, Chat_explore, click_chat_ratio, \
-    home_insert
+from chat_click_show.active import  start_chat_rate_2, Time_spent,  \
+     click_rate_1, chat_round_3, avg_bot_click_4, first_chat_bot_5
+from chat_click_show.explore import show_click_rate_1_3, explore_start_chat_rate_2, Chat_round_4
+from growthbook_fetcher.growthbook_data_ETL import fetch_and_save_experiment_data
 
 
 def run_event(event_name, event_func, tag):
@@ -18,16 +19,16 @@ def main(tag):
     print(f"\n🎬 【主流程启动】标签：{tag}\n")
 
     events = [
-        ("Chat_explore", Chat_explore.main),
-        ("click_ratio", click_ratio.main),
+        ("click_rate_1", click_rate_1.main),
+        ("start_chat_rate_2", start_chat_rate_2.main),
+        ("chat_round_3", chat_round_3.main),
+        ("avg_bot_click_4", avg_bot_click_4.main),
+        ("first_chat_bot_5", first_chat_bot_5.main),
         ("Time_spent", Time_spent.main),
-        ("avg_show", avg_show.main),
-        ("Chat", Chat_active.main),
-        ("bot_chat_start_ratio", bot_chat_start_ratio.main),
-        ("click_chat_ratio", click_chat_ratio.main),
-        ("home_insert", home_insert.main),
-        ("explorec_hat_click_show", explorec_hat_click_show.main)
 
+        ("show_click_rate_1_3", show_click_rate_1_3.main),
+        ("explore_start_chat_rate_2", explore_start_chat_rate_2.main),
+        ("Chat_depth_4", Chat_round_4.main)
     ]
 
     for event_name, event_func in events:
@@ -37,5 +38,7 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    tag = "chat_0508"  # 未来可以从外部传入或读取配置
+
+    tag = "mobile"  # 未来可以从外部传入或读取配置
+    fetch_and_save_experiment_data()
     main(tag)

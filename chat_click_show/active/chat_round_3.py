@@ -1,14 +1,14 @@
-import sys
 import urllib.parse
 import pandas as pd
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 import warnings
 from datetime import datetime, timedelta
+import sys
 
 from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-
 
 import logging
 import os
@@ -37,7 +37,7 @@ def main(tag):
     end_day_str   = end_time.strftime("%Y-%m-%d")
 
     engine = get_db_connection()
-    table_name = f"tbl_report_chat_depth_explore_{tag}"
+    table_name = f"tbl_report_chat_depth_{tag}"
 
     drop_table_query = f"DROP TABLE IF EXISTS {table_name};"
     create_table_query = f"""
@@ -77,55 +77,53 @@ def main(tag):
                 chat_depth_bot_new, chat_depth_user_new, chat_depth_per_user_per_bot_new,
                 experiment_name
             )
-           WITH dedup_assignment AS (
-    SELECT user_id, event_date, variation_id
-    FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (
-                   PARTITION BY user_id, event_date, experiment_id
-                   ORDER BY variation_id
-               ) AS rn
-        FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-        WHERE experiment_id = '{experiment_name}'
-    ) t
-    WHERE rn = 1
-),
-first_visit_user AS (
-    SELECT user_id, DATE(first_visit_date) AS first_visit_date
-    FROM flow_wide_info.tbl_wide_user_first_visit_app_info
-),
-chat_data AS (
-    SELECT
-        cs.*,
-        a.variation_id,
-        u.user_id AS new_user_flag,
-        CASE WHEN u.user_id IS NOT NULL AND cs.event_date = u.first_visit_date THEN 1 ELSE 0 END AS is_new_user
-    FROM flow_event_info.tbl_app_event_chat_send cs
-    JOIN dedup_assignment a
-        ON cs.user_id = a.user_id AND cs.event_date = a.event_date
-    LEFT JOIN first_visit_user u
-        ON cs.user_id = u.user_id
-    WHERE cs.event_date = '{current_date}'
-      AND cs.source = 'tag:Explore'
-)
-SELECT
-    '{current_date}' AS event_date,
-    variation_id AS variation,
-    COUNT(event_id) AS total_chat_rounds,
-    COUNT(DISTINCT user_id) AS unique_users,
-    COUNT(DISTINCT prompt_id) AS chat_bots,
-    ROUND(COUNT(event_id) * 1.0 / COUNT(DISTINCT prompt_id), 2) AS chat_depth_bot,
-    ROUND(COUNT(event_id) * 1.0 / COUNT(DISTINCT user_id), 2) AS chat_depth_user,
-    ROUND(COUNT(event_id) * 1.0 / (COUNT(DISTINCT user_id) * COUNT(DISTINCT prompt_id)), 4) AS chat_depth_per_user_per_bot,
-    ROUND(SUM(CASE WHEN is_new_user = 1 THEN 1 ELSE 0 END) * 1.0 / COUNT(DISTINCT prompt_id), 2) AS chat_depth_bot_new,
-    ROUND(SUM(CASE WHEN is_new_user = 1 THEN 1 ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_new_user = 1 THEN user_id END), 2) AS chat_depth_user_new,
-    ROUND(SUM(CASE WHEN is_new_user = 1 THEN 1 ELSE 0 END) * 1.0 / (
-        COUNT(DISTINCT prompt_id) * COUNT(DISTINCT CASE WHEN is_new_user = 1 THEN user_id END)
-    ), 4) AS chat_depth_per_user_per_bot_new,
-    '{experiment_name}' AS experiment_name
-FROM chat_data
-GROUP BY variation_id;
-
+            WITH dedup_assignment AS (
+                SELECT user_id, event_date, variation_id
+                FROM (
+                    SELECT *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY user_id, event_date, experiment_id
+                            ORDER BY variation_id
+                        ) AS rn
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                ) t
+                WHERE rn = 1
+            ),
+            first_visit_user AS (
+                SELECT user_id, DATE(first_visit_date) AS first_visit_date
+                FROM flow_wide_info.tbl_wide_user_first_visit_app_info
+            ),
+            chat_data AS (
+                SELECT
+                    cs.*,
+                    a.variation_id,
+                    u.user_id AS new_user_flag
+                FROM flow_event_info.tbl_app_event_chat_send cs
+                JOIN dedup_assignment a
+                  ON cs.user_id = a.user_id AND cs.event_date = a.event_date
+                LEFT JOIN first_visit_user u
+                  ON cs.user_id = u.user_id AND cs.event_date = u.first_visit_date
+                WHERE cs.event_date = '{current_date}'
+                  and cs.method != 'generate'
+            )
+            SELECT
+                '{current_date}' AS event_date,
+                variation_id AS variation,
+                COUNT(distinct event_id) AS total_chat_rounds,
+                COUNT(DISTINCT user_id) AS unique_users,
+                COUNT(DISTINCT prompt_id) AS chat_bots,
+                ROUND(COUNT(distinct  event_id) * 1.0 / COUNT(DISTINCT prompt_id), 2) AS chat_depth_bot,
+                ROUND(COUNT(distinct event_id) * 1.0 / COUNT(DISTINCT user_id), 2) AS chat_depth_user,
+                ROUND(COUNT(distinct event_id) * 1.0 / (COUNT(DISTINCT user_id) * COUNT(DISTINCT prompt_id)), 4) AS chat_depth_per_user_per_bot,
+                ROUND(SUM(CASE WHEN new_user_flag IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(DISTINCT prompt_id), 2) AS chat_depth_bot_new,
+                ROUND(SUM(CASE WHEN new_user_flag IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN new_user_flag IS NOT NULL THEN user_id END), 2) AS chat_depth_user_new,
+                ROUND(SUM(CASE WHEN new_user_flag IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / (
+                    COUNT(DISTINCT prompt_id) * COUNT(DISTINCT CASE WHEN new_user_flag IS NOT NULL THEN user_id END)
+                ), 4) AS chat_depth_per_user_per_bot_new,
+                '{experiment_name}' AS experiment_name
+            FROM chat_data
+            GROUP BY variation_id;
             """
             print(f"👉 正在插入日期：{current_date}")
             try:
@@ -145,6 +143,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0519"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

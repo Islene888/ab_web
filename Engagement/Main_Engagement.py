@@ -39,5 +39,5 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    tag = "trans_zh"  # 未来可以从外部传入或读取配置
+    tag = "chat_0519"  # 未来可以从外部传入或读取配置
     main(tag)
