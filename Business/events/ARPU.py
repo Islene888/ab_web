@@ -125,4 +125,4 @@ def main(tag):
     print("🚀 主流程执行完毕。")
 
 if __name__ == "__main__":
-    main("trans_es")
+    main("chat_0519")

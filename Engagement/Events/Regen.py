@@ -28,6 +28,19 @@ def insert_data_by_variation_batch(conn, table_name, experiment_name, current_da
         for var in batch:
             insert_query = f"""
             INSERT INTO {table_name} (event_date, variation, total_regen, unique_regen_users, regen_ratio, experiment_name)
+            WITH dedup_assign AS (
+                SELECT user_id, variation_id
+                FROM (
+                    SELECT
+                        user_id,
+                        variation_id,
+                        event_date,
+                        ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_date DESC) AS rn
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                ) t
+                WHERE rn = 1 AND variation_id = '{var}'
+            )
             SELECT
                 '{current_date}' AS event_date,
                 '{var}' AS variation,
@@ -39,10 +52,9 @@ def insert_data_by_variation_batch(conn, table_name, experiment_name, current_da
                 END AS regen_ratio,
                 '{experiment_name}' AS experiment_name
             FROM flow_event_info.tbl_app_event_chat_send a
-            JOIN flow_wide_info.tbl_wide_experiment_assignment_hi b
+            JOIN dedup_assign b
                 ON a.user_id = b.user_id
-            WHERE b.experiment_id = '{experiment_name}'
-              AND a.event_date = '{current_date}'
+            WHERE a.event_date = '{current_date}'
               AND a.Method = 'regenerate'
               AND b.variation_id = '{var}'
             """
@@ -117,6 +129,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0521"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

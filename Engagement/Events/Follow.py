@@ -9,11 +9,11 @@ from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_deta
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
 import logging
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
 def get_db_connection():
     password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
     DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
@@ -66,8 +66,22 @@ def main(tag):
     if not filter_days:
         print("⚠️ 实验时间不足三天，未过滤首尾日。")
 
+    # ======= 修改点：实验分配 row_number 去重 =======
     insert_query = f"""
     INSERT INTO {table_name} (event_date, variation, total_follow, unique_follow_users, follow_ratio, experiment_name)
+    WITH dedup_assign AS (
+        SELECT user_id, variation_id
+        FROM (
+            SELECT
+                user_id,
+                variation_id,
+                event_date,
+                ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_date DESC) AS rn
+            FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+            WHERE experiment_id = '{experiment_name}'
+        ) t
+        WHERE rn = 1
+    )
     SELECT 
         raw.event_date,
         raw.variation,
@@ -86,12 +100,7 @@ def main(tag):
                 ELSE ROUND(COUNT(DISTINCT f.event_id) * 1.0 / COUNT(DISTINCT f.user_id), 4)
             END AS follow_ratio
         FROM flow_event_info.tbl_app_event_bot_follow f
-        JOIN (
-            SELECT user_id, variation_id
-            FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-            WHERE experiment_id = '{experiment_name}'
-            GROUP BY user_id, variation_id
-        ) a ON f.user_id = a.user_id
+        JOIN dedup_assign a ON f.user_id = a.user_id
         WHERE f.ingest_timestamp BETWEEN '{start_time_str}' AND '{end_time_str}'
         GROUP BY DATE(f.ingest_timestamp), a.variation_id
     ) AS raw
@@ -114,6 +123,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "trans_es"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

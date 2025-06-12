@@ -72,6 +72,19 @@ def main(tag):
             current_date = (start_date + timedelta(days=d)).strftime("%Y-%m-%d")
             insert_query = f"""
             INSERT INTO {table_name} (event_date, variation, total_edit, unique_edit_users, edit_ratio, experiment_name)
+            WITH dedup_assign AS (
+                SELECT user_id, variation_id, event_date
+                FROM (
+                    SELECT
+                        user_id,
+                        variation_id,
+                        event_date,
+                        ROW_NUMBER() OVER (PARTITION BY user_id, event_date ORDER BY event_date DESC) AS rn
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                ) t
+                WHERE rn = 1
+            )
             SELECT
                 '{current_date}' AS event_date,
                 b.variation_id AS variation,
@@ -83,14 +96,13 @@ def main(tag):
                 END AS edit_ratio,
                 '{experiment_name}' AS experiment_name
             FROM flow_event_info.tbl_app_event_chat_send a
-            JOIN flow_wide_info.tbl_wide_experiment_assignment_hi b
-              ON a.user_id = b.user_id
-              and a.event_date = b.event_date
-            WHERE b.experiment_id = '{experiment_name}'
-              AND a.event_date = '{current_date}'
+            JOIN dedup_assign b
+              ON a.user_id = b.user_id AND a.event_date = b.event_date
+            WHERE a.event_date = '{current_date}'
               AND a.Method = 'edit'
             GROUP BY b.variation_id;
             """
+
             print(f"👉 正在处理日期：{current_date}")
             conn.execute(text(insert_query))
 
@@ -125,6 +137,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0416"  # 未来可以从外部传入或读取配置
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

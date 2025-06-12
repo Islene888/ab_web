@@ -80,36 +80,33 @@ def main(tag):
             current_date = (start_date + timedelta(days=d)).strftime("%Y-%m-%d")
             batch_insert_query = f"""
             INSERT INTO {table_name} (event_date, variation, total_new_conversation, unique_new_conversation_users, new_conversation_ratio, experiment_name)
-            -- 示例优化结构（减少爆炸 join）：
-WITH assigned_users AS (
-    SELECT user_id, variation_id
-    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-    WHERE experiment_id = '{experiment_name}'
-),
-chat_events AS (
-    SELECT DISTINCT user_id, conversation_id, event_date
-    FROM flow_event_info.tbl_app_event_chat_send
-    WHERE event_date = '{current_date}'
-      AND ingest_timestamp BETWEEN '{start_time_str}' AND '{end_time_str}'
-)
-
-SELECT
-    e.event_date,
-    u.variation_id AS variation,
-    COUNT(DISTINCT e.conversation_id) AS total_new_conversation,
-    COUNT(DISTINCT e.user_id) AS unique_new_conversation_users,
-    CASE
-        WHEN COUNT(DISTINCT e.user_id) = 0 THEN 0
-        ELSE ROUND(COUNT(DISTINCT e.conversation_id) * 1.0 / COUNT(DISTINCT e.user_id), 4)
-    END AS new_conversation_ratio,
-    '{experiment_name}' AS experiment_name
-FROM chat_events e
-JOIN assigned_users u
-  ON e.user_id = u.user_id
-GROUP BY e.event_date, u.variation_id
-ORDER BY e.event_date, u.variation_id
-
-
+                WITH assigned_users AS (
+                    SELECT DISTINCT user_id, variation_id
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                      AND event_date = '{current_date}'
+                ),
+                chat_events AS (
+                    SELECT DISTINCT user_id, conversation_id, event_date
+                    FROM flow_event_info.tbl_app_event_chat_send
+                    WHERE event_date = '{current_date}'
+                      AND event_date BETWEEN '{start_time_str}' AND '{end_time_str}'
+                )
+                SELECT
+                    e.event_date,
+                    u.variation_id AS variation,
+                    COUNT(DISTINCT e.conversation_id) AS total_new_conversation,
+                    COUNT(DISTINCT e.user_id) AS unique_new_conversation_users,
+                    CASE
+                        WHEN COUNT(DISTINCT e.user_id) = 0 THEN 0
+                        ELSE ROUND(COUNT(DISTINCT e.conversation_id) * 1.0 / COUNT(DISTINCT e.user_id), 4)
+                    END AS new_conversation_ratio,
+                    '{experiment_name}' AS experiment_name
+                FROM chat_events e
+                JOIN assigned_users u
+                  ON e.user_id = u.user_id
+                GROUP BY e.event_date, u.variation_id
+                ORDER BY e.event_date, u.variation_id;
             """
             print(f"👉 正在插入日期：{current_date}")
             conn.execute(text(batch_insert_query))
@@ -124,6 +121,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0409"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

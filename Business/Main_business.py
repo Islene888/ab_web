@@ -33,5 +33,5 @@ def main(tag):
     print("\n🎉 【所有计算处理完毕】")
 
 if __name__ == "__main__":
-    tag = "trans_es"  # 可修改为动态传入
+    tag = "chat_0519"
     main(tag)

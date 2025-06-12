@@ -78,6 +78,19 @@ def main(tag):
             INSERT INTO {table_name} (
                 event_date, variation, total_continue, unique_continue_users, continue_ratio, experiment_name
             )
+            WITH dedup_assign AS (
+                SELECT user_id, variation_id, event_date
+                FROM (
+                    SELECT
+                        user_id,
+                        variation_id,
+                        event_date,
+                        ROW_NUMBER() OVER (PARTITION BY user_id, event_date ORDER BY timestamp_assigned ASC) AS rn
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                ) t
+                WHERE rn = 1 AND event_date = '{current_date}'
+            )
             SELECT
                 a.event_date,
                 b.variation_id AS variation,
@@ -89,16 +102,9 @@ def main(tag):
                 END AS continue_ratio,
                 '{experiment_name}' AS experiment_name
             FROM flow_event_info.tbl_app_event_chat_send a
-            JOIN (
-                SELECT user_id, variation_id
-                FROM (
-                    SELECT user_id, variation_id,
-                           ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY timestamp_assigned ASC) AS rn
-                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-                    WHERE experiment_id = '{experiment_name}'
-                ) t
-                WHERE rn = 1
-            ) b ON a.user_id = b.user_id
+            JOIN dedup_assign b
+              ON a.user_id = b.user_id
+             AND a.event_date = b.event_date
             WHERE a.event_date = '{current_date}'
               AND a.Method = 'continue'
             GROUP BY a.event_date, b.variation_id
@@ -107,6 +113,7 @@ def main(tag):
 
             print(f"🔹 正在插入日期：{current_date}")
             conn.execute(text(batch_insert_query))
+
 
         print(f"✅ 所有批次数据已插入到表 {table_name} 中。")
 
@@ -118,6 +125,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "chat_0508"
+        tag = "mobile"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)
