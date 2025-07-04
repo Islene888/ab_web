@@ -107,25 +107,25 @@ def fetch_and_save_experiment_data():
 
                 experiments_data.append({
                     "experiment_name": "chat-generate-image",
-                    "tags": "mobile",
-                    "phase_start_time": datetime(2025,5,22,0,00,00),
-                    "phase_end_time": datetime(2025,6,10,12,00,00),
+                    "tags": "mobile_new",
+                    "phase_start_time": datetime(2025,6,12,0,00,00),
+                    "phase_end_time": datetime(2025,6,23,18,00,00),
                     "number_of_variations": 2,
                     "control_group_key": 0
                 })
                 experiments_data.append({
-                    "experiment_name": "app_bpr_recall_exp",
+                    "experiment_name": "app_rs_top_recall_exp",
                     "tags": "recall",
-                    "phase_start_time": datetime(2025,6,4,0,00,00),
-                    "phase_end_time": datetime(2025,6,11,12,00,00),
+                    "phase_start_time": datetime(2025,6,27,0,00,00),
+                    "phase_end_time": datetime(2025,7,2,20,00,00),
                     "number_of_variations": 2,
                     "control_group_key": 0
                 })
                 experiments_data.append({
-                    "experiment_name": "conversation-summary-0528",
-                    "tags": "chat_0519",
-                    "phase_start_time": datetime(2025, 5, 28, 0, 00, 00),
-                    "phase_end_time": datetime(2025, 6, 11, 12, 00, 00),
+                    "experiment_name": "mobile-subscribe-new-ui",
+                    "tags": "new_ui",
+                    "phase_start_time": datetime(2025, 6, 24, 0, 00, 00),
+                    "phase_end_time": datetime(2025, 7, 2, 18, 00, 00),
                     "number_of_variations": 2,
                     "control_group_key": 0
                 })
@@ -185,10 +185,7 @@ def fetch_and_save_experiment_data():
 
 
 def get_last_phase_start_time(experiment):
-    """
-    获取实验最后一个阶段的开始时间，如果没有开始时间，则返回 None。
-    统一时间格式为秒（去掉微秒部分）。
-    """
+
     phases = experiment.get('phases', [])
     if phases:
         last_phase = phases[-1]  # 获取最后一个阶段

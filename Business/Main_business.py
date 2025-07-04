@@ -1,9 +1,8 @@
 import time
 from Business.events import (
-    LTV7,
     ARPU,
     ARPPU,
-    payment_ratio
+    payment_ratio, LTV, AOV, cancel_sub, payment_rate_all, payment_rate_new
 )
 
 def run_event(event_name, event_func, tag, explanation):
@@ -20,9 +19,13 @@ def main(tag):
     print(f"\n🎬 【主流程启动】标签：{tag}\n")
 
     events = [
-        ("LTV7", LTV7.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
+        ("AOV", AOV.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
         ("ARPU", ARPU.main, "每用户平均收入（ARPU）计算，反映每个用户带来的平均收入。"),
         ("ARPPU", ARPPU.main, "每付费用户平均收入（ARPPU）计算，反映每个付费用户产生的收入。"),
+        ("cancel_sub", cancel_sub.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
+        ("LTV", LTV.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
+        ("payment_rate_all", payment_rate_all.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
+        ("payment_rate_new", payment_rate_new.main, "7日生命周期价值（LTV）计算，衡量用户在加入后的前7天内所产生的总价值。"),
         ("payment", payment_ratio.main, "支付比例计算完成")
 
     ]
@@ -33,5 +36,5 @@ def main(tag):
     print("\n🎉 【所有计算处理完毕】")
 
 if __name__ == "__main__":
-    tag = "chat_0519"
+    tag = "subscription_pricing_area"
     main(tag)

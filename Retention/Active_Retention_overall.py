@@ -1,5 +1,6 @@
 import sys
 import urllib.parse
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 import pandas as pd
 import numpy as np
@@ -14,6 +15,7 @@ import logging
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
 def get_db_connection():
     password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
     DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
@@ -25,6 +27,8 @@ def extract_data_from_db(tag, engine):
     query = f"SELECT * FROM tbl_wide_user_retention_active_{tag};"
     try:
         df = pd.read_sql(query, engine)
+        # 确保 dt 列为 datetime 类型
+        df['dt'] = pd.to_datetime(df['dt'])
         if "new_users" in df.columns:
             df.rename(columns={"new_users": "users"}, inplace=True)
         return df.fillna(0)
@@ -43,7 +47,7 @@ def calculate_retention(df):
         except:
             variation = row["variation"]
         users = row["users"]
-        cov = row["coverage_ratio"] if "coverage_ratio" in row else None
+        cov = row.get("coverage_ratio", None)
         for day_key, day in days.items():
             if day_key not in row:
                 continue
@@ -65,9 +69,21 @@ def calculate_retention(df):
             })
     return pd.DataFrame(results)
 
-def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3, 7, 15), n_samples=10000):
+def calculate_overall_day_metrics_and_save(retention_df,
+                                           engine,
+                                           tag,
+                                           days=(1, 3, 7, 15),
+                                           n_samples=10000,
+                                           filter_by_cutoff=True):
+    """
+    统计整体留存并写入表 tbl_report_user_retention_active_{tag}_overall
+    - filter_by_cutoff=True 时：只统计注册日期 dt <= max_dt - day 天 的用户批次
+    """
     table_name = f"tbl_report_user_retention_active_{tag}_overall"
     results = []
+
+    # 取整个周期内最大的注册日期
+    max_dt = retention_df['dt'].max()
 
     for day in days:
         day_data = retention_df[retention_df["day"] == day].copy()
@@ -75,28 +91,40 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
             print(f"❌ 没有 day={day} 的数据，无法计算整体留存")
             continue
 
+        # 1) 按首尾日期去除当天和最新一天（可选）
         unique_dates = sorted(day_data["dt"].unique())
         if len(unique_dates) > 2:
             day_data = day_data[~day_data["dt"].isin([unique_dates[0], unique_dates[-1]])]
 
+        # 2) 按过滤规则排除“未满 day 天”的用户
+        if filter_by_cutoff:
+            cutoff = max_dt - timedelta(days=day)
+            day_data = day_data[day_data['dt'] <= cutoff]
+            if day_data.empty:
+                print(f"⚠️ 过滤后 day={day} 无可用数据，跳过")
+                continue
+
+        # 3) 按 variation 汇总用户和留存
         grouped = day_data.groupby("variation", as_index=False).agg({
             "users": "sum",
             "retained": "sum"
         })
 
+        # 找对照组
         control = grouped[grouped["variation"] == 0]
         if control.empty:
             print(f"❌ day={day} 未找到对照组（variation=0）")
             continue
         control = control.iloc[0]
 
+        # 贝叶斯估计
         alpha_c = control["retained"] + 1
         beta_c = control["users"] - control["retained"] + 1
         samples_c = np.random.beta(alpha_c, beta_c, n_samples)
         mean_c = samples_c.mean()
         freq_c = control["retained"] / control["users"]
 
-        # 全量频率 uplift（权重uplift）
+        # 全量频率 uplift（对比所有实验组和对照组）
         exp_users_total = grouped[grouped["variation"] != 0]["users"].sum()
         exp_retained_total = grouped[grouped["variation"] != 0]["retained"].sum()
         control_users_total = control["users"]
@@ -106,15 +134,16 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
         control_rate = control_retained_total / control_users_total if control_users_total > 0 else 0
         freq_uplift = (exp_rate - control_rate) / control_rate if control_rate > 0 else 0
 
+        # 分 variation 计算各自 uplift
         for _, row in grouped[grouped["variation"] != 0].iterrows():
             var = int(row["variation"])
             alpha_e = row["retained"] + 1
             beta_e = row["users"] - row["retained"] + 1
             samples_e = np.random.beta(alpha_e, beta_e, n_samples)
             mean_e = samples_e.mean()
-            freq_e = row["retained"] / row["users"]
             uplift = (mean_e - mean_c) / mean_c if mean_c > 0 else 0
             chance_to_win = np.mean(samples_e > samples_c)
+            freq_e = row["retained"] / row["users"]
 
             results.append({
                 "day": day,
@@ -134,6 +163,7 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
 
     df_result = pd.DataFrame(results)
 
+    # DDL + 清空表
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         day INT,
@@ -155,11 +185,8 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
     ) ENGINE=OLAP
     DUPLICATE KEY(day, variation)
     DISTRIBUTED BY HASH(day, variation) BUCKETS 10
-    PROPERTIES (
-        "replication_num" = "3"
-    );
+    PROPERTIES ("replication_num" = "3");
     """
-
     try:
         with engine.connect() as conn:
             conn.execute(text("SET query_timeout = 30000;"))
@@ -167,7 +194,7 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
             conn.execute(text(f"TRUNCATE TABLE {table_name}"))
         print(f"✅ 表 {table_name} 已创建并清空")
 
-        # 补齐所有 uplift 字段（无则为 None）
+        # 补全缺失列
         for day in days:
             uplift_col = f"overall_d{day}_uplift"
             if uplift_col not in df_result.columns:
@@ -201,8 +228,7 @@ def calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=(1, 3
                 'freq_uplift': sqlalchemy.Float()
             }
         )
-        print(f"📊 整体留存结果（多天）已写入表 {table_name}！")
-        print(df_result)
+        print(f"📊 整体留存结果已写入表 {table_name}！")
     except Exception as e:
         print(f"❌ 写入 {table_name} 失败: {e}")
 
@@ -214,8 +240,15 @@ def main(tag):
         return
 
     retention_df = calculate_retention(df)
-    calculate_overall_day_metrics_and_save(retention_df, engine, tag, days=[1, 3, 7, 15])
+    calculate_overall_day_metrics_and_save(
+        retention_df,
+        engine,
+        tag,
+        days=[1, 3, 7, 15],
+        n_samples=10000,
+        filter_by_cutoff=True
+    )
 
 if __name__ == "__main__":
-    tag = "mobile"
+    tag = "mobile_new"
     main(tag)

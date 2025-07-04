@@ -97,11 +97,9 @@ def insert_experiment_data_to_wide_active_table(tag):
         except SQLAlchemyError as e:
             print(f"🚨 清空数据失败: {e}")
 
-        # 使用 CRC32 函数对 user_id 转数字，利用 MOD 方法分批执行插入
         batch_count = 20
         for i in range(batch_count):
             insert_query = f"""            
-              -- 改写SQL：防止笛卡尔积 + 精确去重
 INSERT INTO {table_name} (dt, variation, new_users, d1, d3, d7, d15, total_assigned)
 SELECT
     base.active_date AS dt,
@@ -170,7 +168,6 @@ LEFT JOIN (
 WHERE e.variation IS NOT NULL
 GROUP BY base.active_date, e.variation
 ORDER BY base.active_date, e.variation;
-
             """
 
             try:
@@ -239,5 +236,5 @@ ORDER BY base.active_date, e.variation;
 
 # 如果需要运行，可调用函数，例如：
 if __name__ == "__main__":
-    tag = "chat_0519"
+    tag = "mobile_new"
     insert_experiment_data_to_wide_active_table(tag)

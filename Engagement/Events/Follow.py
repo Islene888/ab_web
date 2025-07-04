@@ -1,18 +1,15 @@
+import sys
 import urllib.parse
-import pandas as pd
 from sqlalchemy import create_engine, text
+import pandas as pd
 import warnings
 from datetime import datetime
-import sys
-
-from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
-
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 import logging
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def get_db_connection():
     password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
@@ -24,6 +21,7 @@ def get_db_connection():
 def main(tag):
     print(f"🚀 开始获取实验数据，标签：{tag}")
 
+    from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
     experiment_data = get_experiment_details_by_tag(tag)
     if not experiment_data:
         print(f"⚠️ 没有找到符合标签 '{tag}' 的实验数据！")
@@ -57,8 +55,7 @@ def main(tag):
 
     truncate_query = f"TRUNCATE TABLE {table_name};"
 
-    # 判断是否过滤首尾日
-    filter_days = (end_time - start_time).days > 2
+    filter_days = (end_time - start_time).days > 1
     date_filter_clause = (
         f"WHERE raw.event_date > '{start_day}' AND raw.event_date < '{end_day}'"
         if filter_days else ""
@@ -66,7 +63,6 @@ def main(tag):
     if not filter_days:
         print("⚠️ 实验时间不足三天，未过滤首尾日。")
 
-    # ======= 修改点：实验分配 row_number 去重 =======
     insert_query = f"""
     INSERT INTO {table_name} (event_date, variation, total_follow, unique_follow_users, follow_ratio, experiment_name)
     WITH dedup_assign AS (
@@ -91,18 +87,18 @@ def main(tag):
         '{experiment_name}' AS experiment_name
     FROM (
         SELECT
-            DATE(f.ingest_timestamp) AS event_date,
+            f.event_date,
             a.variation_id AS variation,
-            COUNT(DISTINCT f.event_id) AS total_follow,
+            COUNT(distinct f.event_id) AS total_follow,                   -- 不去重
             COUNT(DISTINCT f.user_id) AS unique_follow_users,
             CASE 
                 WHEN COUNT(DISTINCT f.user_id) = 0 THEN 0 
-                ELSE ROUND(COUNT(DISTINCT f.event_id) * 1.0 / COUNT(DISTINCT f.user_id), 4)
+                ELSE ROUND(COUNT(distinct f.event_id) * 1.0 / COUNT(DISTINCT f.user_id), 4)
             END AS follow_ratio
         FROM flow_event_info.tbl_app_event_bot_follow f
         JOIN dedup_assign a ON f.user_id = a.user_id
-        WHERE f.ingest_timestamp BETWEEN '{start_time_str}' AND '{end_time_str}'
-        GROUP BY DATE(f.ingest_timestamp), a.variation_id
+        WHERE f.event_date BETWEEN '{start_day}' AND '{end_day}'
+        GROUP BY f.event_date, a.variation_id
     ) AS raw
     {date_filter_clause};
     """
@@ -123,6 +119,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "mobile"
+        tag = "subscription_pricing_area"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

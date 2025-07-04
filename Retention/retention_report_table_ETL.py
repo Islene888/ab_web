@@ -247,5 +247,5 @@ def main(tag):
     load_analysis_results(final_report, engine, table_name)
 
 if __name__ == "__main__":
-    tag = "trans_es"  # 替换为实际实验 tag
+    tag = "trans_es"
     main(tag)

@@ -154,6 +154,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         tag = sys.argv[1]
     else:
-        tag = "mobile"
+        tag = "trans_pt"
         print(f"⚠️ 未指定实验标签，默认使用：{tag}")
     main(tag)

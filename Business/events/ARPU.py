@@ -9,10 +9,12 @@ from datetime import datetime
 
 
 from growthbook_fetcher.experiment_tag_all_parameters import get_experiment_details_by_tag
+from growthbook_fetcher.growthbook_data_ETL import fetch_and_save_experiment_data
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 load_dotenv()  # ② 新增，自动读取 .env
+fetch_and_save_experiment_data()
 
 def get_db_connection():
     password = urllib.parse.quote_plus(os.environ['DB_PASSWORD'])
@@ -56,65 +58,102 @@ def insert_arpu_data(tag):
 
         insert_query = f"""
         INSERT INTO {table_name} (event_date, variation_id, active_users, total_revenue, ARPU, experiment_tag)
-        WITH 
-        exp AS (
-          SELECT user_id, variation_id, event_date
-          FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-          WHERE experiment_id = '{experiment_name}'
-            AND event_date BETWEEN '{start_date}' AND '{end_date}'
-        ),
-        daily_active AS (
-          SELECT e.event_date, e.variation_id, COUNT(DISTINCT pv.user_id) AS active_users
-          FROM flow_event_info.tbl_app_event_page_view pv
-          JOIN exp e ON pv.user_id = e.user_id AND pv.event_date = e.event_date
-          GROUP BY e.event_date, e.variation_id
-        ),
-        sub AS (
-          SELECT user_id, event_date, SUM(revenue) AS sub_revenue
-          FROM flow_event_info.tbl_app_event_subscribe
-          WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
-          GROUP BY user_id, event_date
-        ),
-        ord AS (
-          SELECT user_id, event_date, SUM(revenue) AS order_revenue
-          FROM flow_event_info.tbl_app_event_currency_purchase
-          WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
-          GROUP BY user_id, event_date
-        ),
-        combined AS (
-          SELECT COALESCE(s.user_id, o.user_id) AS user_id,
-                 COALESCE(s.event_date, o.event_date) AS event_date,
-                 COALESCE(s.sub_revenue, 0) AS sub_revenue,
-                 COALESCE(o.order_revenue, 0) AS order_revenue,
-                 COALESCE(s.sub_revenue, 0) + COALESCE(o.order_revenue, 0) AS total_revenue
-          FROM sub s
-          FULL OUTER JOIN ord o ON s.user_id = o.user_id AND s.event_date = o.event_date
-        ),
-        revenue_with_variation AS (
-          SELECT e.event_date, e.variation_id, c.total_revenue
-          FROM combined c
-          JOIN exp e ON c.user_id = e.user_id AND c.event_date = e.event_date
-        ),
-        daily_revenue AS (
-          SELECT event_date, variation_id, SUM(total_revenue) AS revenue
-          FROM revenue_with_variation
-          GROUP BY event_date, variation_id
-        )
-        SELECT 
-          da.event_date,
-          da.variation_id,
-          da.active_users,
-          COALESCE(dr.revenue, 0) AS total_revenue,
-          ROUND(COALESCE(dr.revenue, 0)/NULLIF(da.active_users, 0), 4) AS ARPU,
-          '{tag}' AS experiment_tag
+        WITH
+            exp AS (
+                SELECT user_id, variation_id, event_date
+                FROM (
+                    SELECT
+                        user_id,
+                        variation_id,
+                        event_date,
+                        ROW_NUMBER() OVER (PARTITION BY user_id, event_date ORDER BY event_date DESC) AS rn
+                    FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                    WHERE experiment_id = '{experiment_name}'
+                        AND event_date BETWEEN '{start_date}' AND '{end_date}'
+                ) t
+                WHERE rn = 1
+            ),
+            daily_active AS (
+                SELECT
+                    e.event_date,
+                    e.variation_id,
+                    COUNT(DISTINCT pv.user_id) AS active_users
+                FROM flow_event_info.tbl_app_event_page_view pv
+                JOIN exp e ON pv.user_id = e.user_id AND pv.event_date = e.event_date
+                GROUP BY e.event_date, e.variation_id
+            ),
+            sub AS (
+                SELECT user_id, event_date, SUM(revenue) AS sub_revenue
+                FROM flow_event_info.tbl_app_event_subscribe
+                WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
+                GROUP BY user_id, event_date
+            ),
+            ord AS (
+                SELECT user_id, event_date, SUM(revenue) AS order_revenue
+                FROM flow_event_info.tbl_app_event_currency_purchase
+                WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
+                GROUP BY user_id, event_date
+            ),
+            user_revenue AS (
+                SELECT
+                    e.event_date,
+                    e.variation_id,
+                    COALESCE(s.sub_revenue, 0) + COALESCE(o.order_revenue, 0) AS total_revenue
+                FROM exp e
+                LEFT JOIN sub s ON e.user_id = s.user_id AND e.event_date = s.event_date
+                LEFT JOIN ord o ON e.user_id = o.user_id AND e.event_date = o.event_date
+            ),
+            group_revenue AS (
+                SELECT
+                    event_date,
+                    variation_id,
+                    SUM(total_revenue) AS revenue
+                FROM user_revenue
+                GROUP BY event_date, variation_id
+            ),
+            -- 广告收入（每日总额，无法归属到组或用户）
+            daily_ad AS (
+                SELECT event_date, SUM(ad_revenue) AS ad_revenue
+                FROM flow_event_info.tbl_app_event_ads_impression
+                WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
+                GROUP BY event_date
+            ),
+            -- 每日总活跃用户（用于广告分摊）
+            daily_total_active AS (
+                SELECT event_date, SUM(active_users) AS total_active
+                FROM daily_active
+                GROUP BY event_date
+            )
+        SELECT
+            da.event_date,
+            da.variation_id,
+            da.active_users,
+            -- 每组总收入 = 组充值+订阅收入 + 按活跃用户占比分摊广告收入
+            COALESCE(gr.revenue, 0)
+                + COALESCE(dad.ad_revenue, 0) * da.active_users / NULLIF(dta.total_active, 0)
+                AS total_revenue,
+            ROUND(
+                (
+                    COALESCE(gr.revenue, 0)
+                    + COALESCE(dad.ad_revenue, 0) * da.active_users / NULLIF(dta.total_active, 0)
+                ) / NULLIF(da.active_users, 0),
+            4) AS ARPU,
+            '{tag}' AS experiment_tag
         FROM daily_active da
-        LEFT JOIN daily_revenue dr 
-          ON da.event_date = dr.event_date AND da.variation_id = dr.variation_id
+        LEFT JOIN group_revenue gr
+            ON da.event_date = gr.event_date AND da.variation_id = gr.variation_id
+        LEFT JOIN daily_ad dad
+            ON da.event_date = dad.event_date
+        LEFT JOIN daily_total_active dta
+            ON da.event_date = dta.event_date
         WHERE da.event_date > '{start_date}' AND da.event_date < '{end_date}';
         """
         conn.execute(text(insert_query))
         print(f"✅ ARPU 明细数据已插入到表 {table_name}")
     return table_name
+
+
+
 
 def main(tag):
     print("🚀 主流程开始执行。")
@@ -125,4 +164,4 @@ def main(tag):
     print("🚀 主流程执行完毕。")
 
 if __name__ == "__main__":
-    main("chat_0519")
+    main("subscription_pricing_area")

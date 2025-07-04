@@ -290,5 +290,5 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    tag = "trans_es"  # 修改为你的 tag
+    tag = "mobile_new"  # 修改为你的 tag
     main(tag)

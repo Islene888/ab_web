@@ -74,11 +74,18 @@ def insert_arppu_daily_data(tag):
             daily_insert_query = f"""
             INSERT INTO {table_name} (event_date, variation_id, total_subscribe_revenue, total_order_revenue, total_revenue, paying_users, active_users, arppu, experiment_tag)
             WITH 
-            exp AS (
-                SELECT DISTINCT user_id, variation_id
-                FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-                WHERE experiment_id = '{experiment_name}'
-            ),
+              exp AS (
+                    SELECT user_id, variation_id
+                    FROM (
+                        SELECT
+                            user_id,
+                            variation_id,
+                            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_date DESC) AS rn
+                        FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+                        WHERE experiment_id = '{experiment_name}'
+                    ) t
+                    WHERE rn = 1
+                ),
             active AS (
                 SELECT e.variation_id, COUNT(DISTINCT c.user_id) AS active_users
                 FROM (
@@ -157,4 +164,4 @@ def main(tag):
 
 # 只在单独运行 ARPPU.py 时才执行
 if __name__ == "__main__":
-    main("chat_0519")
+    main("mobile")

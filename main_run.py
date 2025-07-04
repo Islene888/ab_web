@@ -7,7 +7,7 @@ from Business import Main_business
 from Engagement import Main_Engagement
 from Recharge import recharge, recharge_summury
 from Retention import Main_Retention
-from Subscribe import subscribe, subscribe_sum
+from Subscribe import subscribe, sub, first_new_sub
 from chat_click_show import Main_Chat_click_show
 from growthbook_fetcher.growthbook_data_ETL import fetch_and_save_experiment_data
 
@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", category=SAWarning)
 fetch_and_save_experiment_data()
 
 # 定义实验标签
-tag = 'chat_0519'
+tag = 'new_ui'
 
 
 # 1.留存计算
@@ -40,9 +40,9 @@ recharge.main(tag)
 recharge_summury.main(tag)
 
 # 6.subscribe 订阅
-subscribe.main(tag)
-subscribe_sum.main(tag)
-
+subscribe.get_daily_subscribe_metrics_with_subscribe_rate(tag)
+sub.get_and_save_daily_order_rate_by_experiment(tag)
+first_new_sub.get_and_save_first_subscribe_rate_by_experiment(tag)
 
 # 7.advertisement.main(tag)
 # advertisement_sum.main(tag)

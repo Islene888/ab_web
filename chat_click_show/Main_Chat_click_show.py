@@ -4,6 +4,7 @@ from chat_click_show.active import  start_chat_rate_2, Time_spent,  \
 from chat_click_show.explore import show_click_rate_1_3, explore_start_chat_rate_2, Chat_round_4
 from growthbook_fetcher.growthbook_data_ETL import fetch_and_save_experiment_data
 
+fetch_and_save_experiment_data()
 
 def run_event(event_name, event_func, tag):
     print(f"\n🚀 开始执行 {event_name} 事件，标签：{tag}")
@@ -20,7 +21,7 @@ def main(tag):
 
     events = [
         ("click_rate_1", click_rate_1.main),
-        ("start_chat_rate_2", start_chat_rate_2.main),
+        # ("start_chat_rate_2", start_chat_rate_2.main),
         ("chat_round_3", chat_round_3.main),
         ("avg_bot_click_4", avg_bot_click_4.main),
         ("first_chat_bot_5", first_chat_bot_5.main),
@@ -39,6 +40,6 @@ def main(tag):
 
 if __name__ == "__main__":
 
-    tag = "mobile"  # 未来可以从外部传入或读取配置
+    tag = "trans_pt"  # 未来可以从外部传入或读取配置
     fetch_and_save_experiment_data()
     main(tag)

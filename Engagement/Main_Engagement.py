@@ -3,7 +3,6 @@ from Engagement.Events import (
     Continue,
     Follow,
     New_Conversation,
-    Message,
     Regen,
     Conversation_reset, edit
 )
@@ -23,13 +22,12 @@ def main(tag):
     print(f"\n🎬 【主流程启动】标签：{tag}\n")
 
     events = [
-        ("Conversation", New_Conversation.main),
-        ("Message", Message.main),
-        ("Regen", Regen.main),
-        ("edit", edit.main),
-        ("ConversationEnded", Conversation_reset.main),
         ("Continue", Continue.main),
-        ("Follow", Follow.main)
+        ("Conversation_reset", Conversation_reset.main),
+        ("edit", edit.main),
+        ("Follow", Follow.main),
+        ("New_Conversation", New_Conversation.main),
+        ("Regen", Regen.main)
     ]
 
     for event_name, event_func in events:
@@ -39,5 +37,5 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    tag = "chat_0519"  # 未来可以从外部传入或读取配置
+    tag = "trans_pt"  # 未来可以从外部传入或读取配置
     main(tag)
