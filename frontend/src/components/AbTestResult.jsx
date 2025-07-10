@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Table, Spin, Alert, Card, Row, Col, Form, Input, DatePicker, Button, Select } from "antd";
 import ReactECharts from "echarts-for-react";
 import moment from "moment";
 
 function getUpliftStats(exp, control) {
-  if (!exp || !control) return { uplift: "-", ci: "-", winRate: "-" };
+  if (!exp || !control) return { uplift: null, ciLow: null, ciHigh: null, winRate: null, riskProb: null, risk: null, upliftSamples: [] };
   const expSamples = exp.posterior_samples;
   const ctrlSamples = control.posterior_samples;
   const n = Math.min(expSamples.length, ctrlSamples.length);
@@ -12,18 +12,20 @@ function getUpliftStats(exp, control) {
     (expSamples[i] - ctrlSamples[i]) / ctrlSamples[i]
   );
   const sorted = upliftSamples.slice().sort((a, b) => a - b);
-  const ciLow = sorted[Math.floor(n * 0.025)];
-  const ciHigh = sorted[Math.floor(n * 0.975)];
-  const winRate = (upliftSamples.filter(x => x > 0).length / n) * 100;
+  const ciLow = sorted[Math.floor(n * 0.025)]; // 小数
+  const ciHigh = sorted[Math.floor(n * 0.975)]; // 小数
+  const winRate = upliftSamples.filter(x => x > 0).length / n;
   const riskProb = upliftSamples.filter(x => x < 0).length / n;
   const meanDiff = Math.abs(exp.mean - control.mean);
   const risk = (riskProb * meanDiff).toFixed(4);
   return {
-    uplift: ((exp.mean - control.mean) / control.mean * 100).toFixed(2),
-    ci: `[${(ciLow * 100).toFixed(2)}%, ${(ciHigh * 100).toFixed(2)}%]`,
-    winRate: winRate.toFixed(1),
-    riskProb: (riskProb * 100).toFixed(1),
-    risk
+    uplift: (exp.mean - control.mean) / control.mean, // 小数
+    ciLow, // 小数
+    ciHigh, // 小数
+    winRate, // 小数
+    riskProb, // 小数
+    risk,
+    upliftSamples // 新增
   };
 }
 
@@ -71,6 +73,7 @@ function UpliftViolinBar({ mean, ciLow, ciHigh }) {
   );
 }
 
+// 结果状态判断函数，与贝叶斯表格一致
 function getResultStatus({ ciLow, ciHigh, chanceToWin }) {
   if (ciLow > 0 && chanceToWin > 0.95) return "Won";
   if (ciHigh < 0 && chanceToWin < 0.05) return "Lost";
@@ -85,18 +88,161 @@ const metricNameMap = {
   chat: "Chat"
 };
 
-export default function AbTestResult({ experimentName, startDate, endDate, metric, userType }) {
+// 高斯核函数
+function gaussianKernel(u) {
+  return Math.exp(-0.5 * u * u) / Math.sqrt(2 * Math.PI);
+}
+// KDE 密度估计
+function kde(samples, xs, bandwidth) {
+  return xs.map(x =>
+    samples.reduce((sum, xi) => sum + gaussianKernel((x - xi) / bandwidth), 0) / (samples.length * bandwidth)
+  );
+}
+// 置信区间自适应百分比刻度生成函数
+function getPercentTicks(min, max) {
+  // min/max 是小数（如 -0.082, -0.051）
+  let minPct = Math.ceil(min * 100);   // 向上取整，保证 >= min
+  let maxPct = Math.floor(max * 100);  // 向下取整，保证 <= max
+  let range = maxPct - minPct;
+  let step = 1;
+  if (range > 10) step = 5;
+  if (range > 30) step = 10;
+  // 步长对齐
+  minPct = Math.ceil(minPct / step) * step;
+  maxPct = Math.floor(maxPct / step) * step;
+  let ticks = [];
+  for (let v = minPct; v <= maxPct; v += step) {
+    ticks.push(v);
+  }
+  return ticks;
+}
+// GrowthBook 风格小提琴图，支持分布样本
+function ViolinPlot({ samples, mean, color, ticks, min, max, violinWidth = 100 }) {
+  if (!Array.isArray(samples) || samples.length < 2) return null;
+  if (!Array.isArray(ticks) || ticks.length < 2) return null;
+  // 计算置信区间（2.5%~97.5%分位点）
+  function quantile(arr, q) {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const pos = (sorted.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sorted[base + 1] !== undefined) {
+      return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+    } else {
+      return sorted[base];
+    }
+  }
+  const ciLow = quantile(samples, 0.025);
+  const ciHigh = quantile(samples, 0.975);
+  // 横坐标区间严格用ciLow~ciHigh，保证对称
+  const width = violinWidth;
+  const height = 25;
+  // 以ticks区间为基准，所有元素对齐
+  const tickMin = Math.min(...ticks) / 100;
+  const tickMax = Math.max(...ticks) / 100;
+  const tickRange = tickMax - tickMin || 1;
+  const scaleX = x => ((x - tickMin) / tickRange) * width;
+  // 分布path只画在置信区间
+  const N = 8000;
+  const xs = Array.from({ length: N }, (_, i) => ciLow + (ciHigh - ciLow) * i / (N - 1));
+  // 带宽
+  const m = mean ?? (samples.reduce((a, b) => a + b, 0) / samples.length);
+  const std = Math.sqrt(samples.reduce((a, b) => a + Math.pow(b - m, 2), 0) / samples.length);
+  const bandwidth = std * 0.4 || 1e-6;
+  // KDE
+  const density = kde(samples, xs, bandwidth);
+  // 归一化密度（最大宽度 0.9）
+  const maxDensity = Math.max(...density) || 1;
+  const scaleY = d => maxDensity === 0 ? 0 : (d / maxDensity) * (height / 2 * 0.9); // 这里可以改
+  // 让分布两端尖头收敛
+  density[0] = 0;
+  density[density.length - 1] = 0;
+  // 找到0%对应的索引
+  const zeroIndex = xs.findIndex(x => x >= 0);
+  // 构建左半path（<=0）
+  function buildViolinPath(xs, density, scaleX, scaleY, height) {
+    let path = `M${scaleX(xs[0])},${height/2}`;
+    for (let i = 0; i < xs.length; ++i) {
+      path += ` L${scaleX(xs[i])},${height/2 - scaleY(density[i])}`;
+    }
+    path += ` L${scaleX(xs[xs.length-1])},${height/2}`;
+    for (let i = xs.length-1; i >= 0; --i) {
+      path += ` L${scaleX(xs[i])},${height/2 + scaleY(density[i])}`;
+    }
+    path += ` L${scaleX(xs[0])},${height/2} Z`;
+    return path;
+  }
+  let leftPath = null, rightPath = null;
+  if (zeroIndex > 0 && zeroIndex < xs.length-1) {
+    leftPath = buildViolinPath(xs.slice(0, zeroIndex+1), density.slice(0, zeroIndex+1), scaleX, scaleY, height);
+    rightPath = buildViolinPath(xs.slice(zeroIndex), density.slice(zeroIndex), scaleX, scaleY, height);
+  } else {
+    // 全部为负或正，退化为单色
+    leftPath = buildViolinPath(xs, density, scaleX, scaleY, height);
+  }
+  // 均值线
+  const meanX = scaleX(mean ?? m);
+  // 刻度数字y坐标
+  const tickTextY = -25;
+  const tickLineY1 = -15;
+  const tickLineY2 = height + 35;
+  // 颜色逻辑：全正为绿，全负为红，跨0为红
+  const isAllPositive = ciLow >= 0;
+  const isAllNegative = ciHigh <= 0;
+  const mainColor = isAllPositive ? "#27ae60" : isAllNegative ? "#ff5c5c" : "#ff5c5c";
+  const fillColor = isAllPositive ? "#27ae60cc" : isAllNegative ? "#ff5c5ccc" : "#ff5c5ccc";
+  return (
+    <svg
+      width={width}
+      height={height + 35} // 24是给刻度数字留的空间
+      viewBox={`0 0 ${width} ${height + 24}`}
+      style={{ display: "block", margin: 0, padding: 0, height: "100%", overflow: "visible" }}
+    >
+      {/* 刻度线和数字 */}
+      {Array.isArray(ticks) && ticks.map((tick, i) => {
+        const x = scaleX(tick / 100);
+        return (
+          <g key={i}>
+            <text
+              x={x}
+              y={tickTextY}
+              textAnchor="middle"
+              fontSize={13}
+              fontWeight={700}
+              fill="#e6eaf7"
+              style={{ userSelect: 'none' }}
+            >{tick}%</text>
+            <line
+              x1={x}
+              x2={x}
+              y1={tickLineY1}
+              y2={tickLineY2}
+              stroke="#e6eaf7"
+              strokeWidth={1}
+              opacity={0.4}
+            />
+          </g>
+        );
+      })}
+      {/* 分布主色填充 */}
+      {leftPath && <path d={leftPath} fill={fillColor} stroke={mainColor} strokeWidth={2} />}
+      {rightPath && !isAllPositive && !isAllNegative && <path d={rightPath} fill="#27ae60cc" stroke="#27ae60" strokeWidth={2} />}
+      {/* 均值线和小圆点 */}
+      <line x1={meanX} x2={meanX} y1={height / 2 - height / 2 * 0.9} y2={height / 2 + height / 2 * 0.9} stroke="#fff" strokeWidth={2} opacity={1} />
+    </svg>
+  );
+}
+
+// 贝叶斯表格组件
+export function BayesianTable({ experimentName, startDate, endDate, metric, userType, onData }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [trend, setTrend] = useState(null);
 
-  // 只要metric变化，自动刷新接口和图表
   useEffect(() => {
     if (!experimentName || !startDate || !endDate || !metric) return;
     setLoading(true);
     setError(null);
-    // 拼接 userType 参数
     const userTypeParam = userType ? `&user_type=${userType}` : '';
     fetch(`/api/${metric}_bayesian?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}${userTypeParam}`)
       .then(res => res.json())
@@ -110,237 +256,33 @@ export default function AbTestResult({ experimentName, startDate, endDate, metri
       });
   }, [experimentName, startDate, endDate, metric, userType]);
 
-  useEffect(() => {
-    if (!experimentName || !startDate || !endDate || !metric) return;
-    const userTypeParam = userType ? `&user_type=${userType}` : '';
-    fetch(`/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}${userTypeParam}`)
-      .then(res => res.json())
-      .then(setTrend)
-      .catch(() => setTrend(null));
-  }, [experimentName, startDate, endDate, metric, userType]);
-
-  if (loading) return <Spin tip="Loading..." style={{ marginTop: 80 }} />;
-  if (error) return <Alert type="error" message={"Data loading failed: " + error} showIcon style={{ marginTop: 80 }} />;
-
-  // 统一贝叶斯表格列
-  const bayesianColumns = [
-    { title: "Variation", dataIndex: "variation", key: "variation", align: "center", width: 300 },
-    { title: "Baseline", dataIndex: "baseline", key: "baseline", align: "center", width: 300 },
-    { title: "Variation", dataIndex: "experiment", key: "experiment", align: "center", width: 300 },
-    { title: "Chance to Win", dataIndex: "winrate", key: "winrate", align: "center", width: 300 },
-    { title: "Credible Interval", dataIndex: "ci", key: "ci", align: "center", width: 400,
-      render: (v, row) => (
-        <UpliftViolinBar
-          mean={Number(row.upliftNum)}
-          ciLow={Number(row.ciLow) * 100}
-          ciHigh={Number(row.ciHigh) * 100}
-        />
-      )
-    },
-    { title: "% Change", dataIndex: "uplift", key: "uplift", align: "center", width: 300,
-      render: v => <span style={{ color: v > 0 ? '#27ae60' : '#e74c3c', fontWeight: 700 }}>{v > 0 ? '+' : ''}{v}%</span>
-    },
-    { title: "Risk", dataIndex: "risk", key: "risk", align: "center", width: 300 },
-    {
-      title: "Result",
-      dataIndex: "result",
-      key: "result",
-      align: "center",
-      width: 200,
-      render: (text) => {
-        let color = "#bfbfbf";
-        if (text === "Won") color = "#52c41a";
-        if (text === "Lost") color = "#ff4d4f";
-        return <span style={{ color, fontWeight: 600 }}>{text}</span>;
-      }
-    }
-  ];
-
-  // 新增：如果 data 是 d1/d3/d7/d15 结构，合并渲染
-  const retentionDays = ["d1", "d3", "d7", "d15"];
-  const retentionColors = {
-    d1: '#3B6FF5',
-    d3: '#27ae60',
-    d7: '#FF9900',
-    d15: '#e74c3c'
-  };
-  if (data && retentionDays.every(day => data[day])) {
-    // 组装统一风格的表格数据
-    let bayesianTableData = [];
-    retentionDays.forEach(day => {
-      const groupData = data[day];
-      if (!groupData || !Array.isArray(groupData)) return;
-      // 假设 group 最小的为 Baseline
-      const sortedGroups = [...groupData].sort((a, b) => (a.group > b.group ? 1 : -1));
-      const control = sortedGroups[0];
-      const experiments = sortedGroups.slice(1);
-      experiments.forEach((g, idx) => {
-        const stats = getUpliftStats(g, control);
-        // 组装成和tableData一致的结构
-        bayesianTableData.push({
-          key: `${day}_${g.group}`,
-          variation: (
-            <div style={{ fontWeight: 600, fontSize: 16, textAlign: "center" }}>{day.toUpperCase()} - {g.group}</div>
-          ),
-          baseline: (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontWeight: 500, fontSize: 16 }}>{control.mean.toFixed(2)}</div>
-              <div style={{ color: "#888", fontSize: 12 }}>
-                {Math.round(control.numerator !== undefined ? control.numerator : control.total_revenue)} / {Math.round(control.denominator !== undefined ? control.denominator : control.total_order)}
-              </div>
-            </div>
-          ),
-          experiment: (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontWeight: 500, fontSize: 16 }}>{g.mean.toFixed(2)}</div>
-              <div style={{ color: "#888", fontSize: 12 }}>
-                {Math.round(g.numerator !== undefined ? g.numerator : g.total_revenue)} / {Math.round(g.denominator !== undefined ? g.denominator : g.total_order)}
-              </div>
-            </div>
-          ),
-          winrate: (
-            <div
-              style={{
-                background: stats.uplift > 0 ? "rgba(39,174,96,0.18)" : "rgba(201, 13, 45, 0.45)",
-                color: stats.uplift > 0 ? "#27ae60" : "#e74c3c",
-                fontWeight: 700,
-                fontSize: 22,
-                borderRadius: 12,
-                padding: "8px 0",
-                textAlign: "center",
-                width: "80px",
-                margin: "0 auto",
-                boxShadow: `0 0 0 1px ${stats.uplift > 0 ? '#27ae60' : '#e74c3c'}22`
-              }}
-            >
-              {stats.winRate}%
-            </div>
-          ),
-          ci: stats.ci,
-          upliftNum: Number(stats.uplift),
-          ciLow: Number(stats.ci.match(/-?[\d.]+/g)[0]),
-          ciHigh: Number(stats.ci.match(/-?[\d.]+/g)[1]),
-          uplift: stats.uplift,
-          risk: (
-            <div style={{
-              color: stats.riskProb > 5 ? '#e74c3c' : stats.riskProb > 1 ? '#e67e22' : '#27ae60',
-              fontWeight: 700,
-              fontSize: 16,
-              background: stats.riskProb > 5 ? 'rgba(231,76,60,0.12)' : stats.riskProb > 1 ? 'rgba(230,126,34,0.12)' : 'rgba(39,174,96,0.12)',
-              borderRadius: 8,
-              padding: "4px 8px",
-              display: "inline-block"
-            }}>
-              {stats.riskProb}%<span style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>(~{stats.risk}/user)</span>
-            </div>
-          ),
-          result: getResultStatus({
-            ciLow: Number(stats.ci.match(/-?[\d.]+/g)[0]),
-            ciHigh: Number(stats.ci.match(/-?[\d.]+/g)[1]),
-            chanceToWin: Number(stats.winRate) / 100
-          })
-        });
-      });
-    });
-    // 合并趋势图数据
-    const trendSeries = [];
-    let allDates = [];
-    retentionDays.forEach(day => {
-      const trendData = trend && trend[day];
-      if (!trendData || !trendData.dates) return;
-      if (allDates.length === 0) allDates = trendData.dates;
-      trendData.series.forEach((s, idx) => {
-        trendSeries.push({
-          name: `${day.toUpperCase()}-${s.variation}`,
-          type: 'line',
-          data: s.data,
-          smooth: true,
-          symbol: 'circle',
-          showSymbol: false,
-          lineStyle: { width: 3, type: idx === 0 ? 'solid' : 'dashed' },
-          itemStyle: { color: retentionColors[day] },
-        });
-      });
-    });
-    return (
-      <Row justify="center" style={{ minHeight: "100vh" }}>
-        <Col xs={24}>
-          <Card
-            style={{ width: "100%", maxWidth: 2500, margin: "0 auto", borderRadius: 16, boxShadow: "0 4px 24px 0 rgba(0,0,0,0.06)", background: "#fff" }}
-            bodyStyle={{ padding: 32 }}
-          >
-            <Table
-              columns={bayesianColumns}
-              dataSource={bayesianTableData}
-              pagination={false}
-              bordered
-              rowKey="key"
-              scroll={{ x: true }}
-              style={{ borderRadius: 12, marginBottom: 32, width: "100%" }}
-            />
-            <h2 style={{ textAlign: "center", margin: "32px 0 16px 0" }}>Daily Data</h2>
-            <ReactECharts
-              option={{
-                tooltip: {
-                  trigger: 'axis',
-                  formatter: (params) => {
-                    let html = params[0]?.axisValueLabel + '<br/>';
-                    params.forEach(item => {
-                      html += `<span style=\"display:inline-block;margin-right:8px;border-radius:10px;width:10px;height:10px;background:${item.color}\"></span>`;
-                      html += `${item.seriesName}: <b>${item.data}</b><br/>`;
-                    });
-                    return html;
-                  }
-                },
-                legend: { data: trendSeries.map(s => s.name) },
-                xAxis: {
-                  type: 'category',
-                  data: allDates.slice(1).map(d => d.slice(0, 10)),
-                  boundaryGap: false
-                },
-                yAxis: { type: 'value', name: 'Retention Rate', min: 'dataMin', max: 'dataMax' },
-                series: trendSeries.map(s => ({ ...s, data: s.data.slice(1) }))
-              }}
-              style={{ height: 480, width: "100%" }}
-              notMerge
-              lazyUpdate
-            />
-          </Card>
-        </Col>
-      </Row>
-    );
-  }
-
   // 兼容 retention 返回的 d1/d3/d7/d15 结构
   let groups = data && data.groups;
   if (!groups && data && data.d1 && Array.isArray(data.d1)) {
     groups = [...(data.d1 || []), ...(data.d3 || []), ...(data.d7 || []), ...(data.d15 || [])];
   }
-  if (!groups || groups.length < 2) return (
-    <Row justify="center" style={{ minHeight: "100vh" }}>
-      <Col xs={24}>
-        <Card style={{ width: "100%", maxWidth: 3000, margin: "0 auto", borderRadius: 16, boxShadow: "0 4px 24px 0 rgba(0,0,0,0.06)", background: "#fff" }} bodyStyle={{ padding: 32 }}>
-          <Alert type="info" message="No data available" showIcon />
-        </Card>
-      </Col>
-    </Row>
-  );
 
   // 假设 group 最小的为 Baseline
-  const sortedGroups = [...groups].sort((a, b) => (a.group > b.group ? 1 : -1));
-  const control = sortedGroups[0];
-  const experiments = sortedGroups.slice(1);
+  let control, experiments;
+  if (groups && groups.length >= 2) {
+    const sortedGroups = [...groups].sort((a, b) => (a.group > b.group ? 1 : -1));
+    control = sortedGroups[0];
+    experiments = sortedGroups.slice(1);
+  } else {
+    control = null;
+    experiments = [];
+  }
 
   // 构造表格数据
-  const tableData = experiments.map((g, idx) => {
+  const tableData = (experiments || []).map((g, idx) => {
     const stats = getUpliftStats(g, control);
-    const upliftNum = Number(stats.uplift);
+    const upliftNum = stats.uplift;
     const isPositive = upliftNum > 0;
     const mainColor = isPositive ? "#27ae60" : "#e74c3c";
     const bgColor = isPositive ? "rgba(39,174,96,0.18)" : "rgba(201, 13, 45, 0.45)";
     let riskColor = "#888", riskBg = "rgba(136,136,136,0.12)";
-    if (stats.riskProb > 5) { riskColor = "#e74c3c"; riskBg = "rgba(231,76,60,0.12)"; }
-    else if (stats.riskProb > 1) { riskColor = "#e67e22"; riskBg = "rgba(230,126,34,0.12)"; }
+    if (stats.riskProb > 0.05) { riskColor = "#e74c3c"; riskBg = "rgba(231,76,60,0.12)"; }
+    else if (stats.riskProb > 0.01) { riskColor = "#e67e22"; riskBg = "rgba(230,126,34,0.12)"; }
     else if (stats.riskProb > 0) { riskColor = "#27ae60"; riskBg = "rgba(39,174,96,0.12)"; }
     return {
       key: g.group,
@@ -376,19 +318,19 @@ export default function AbTestResult({ experimentName, startDate, endDate, metri
             boxShadow: `0 0 0 1px ${mainColor}22`
           }}
         >
-          {stats.winRate}%
+          {stats.winRate !== null ? (stats.winRate * 100).toFixed(1) + "%" : "-"}
         </div>
       ),
       ci: (
-        <UpliftViolinBar
-          mean={Number(stats.uplift)}
-          ciLow={Number(stats.ci.match(/-?[\d.]+/g)[0]) * 100}
-          ciHigh={Number(stats.ci.match(/-?[\d.]+/g)[1]) * 100}
+        <ViolinPlot
+          samples={stats.upliftSamples}
+          mean={stats.uplift}
+          color={mainColor}
         />
       ),
       uplift: (
         <span style={{ color: mainColor, fontWeight: 700, fontSize: 20 }}>
-          {upliftNum > 0 ? "+" : ""}{stats.uplift}%
+          {upliftNum > 0 ? "+" : ""}{(upliftNum * 100).toFixed(2)}%
         </span>
       ),
       risk: (
@@ -401,16 +343,22 @@ export default function AbTestResult({ experimentName, startDate, endDate, metri
           padding: "4px 8px",
           display: "inline-block"
         }}>
-          {stats.riskProb}%<span style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>(~{stats.risk}/user)</span>
+          {stats.riskProb !== null ? (stats.riskProb * 100).toFixed(1) + "%" : "-"}<span style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>(~{stats.risk}/user)</span>
         </div>
       ),
       result: getResultStatus({
-        ciLow: Number(stats.ci.match(/-?[\d.]+/g)[0]),
-        ciHigh: Number(stats.ci.match(/-?[\d.]+/g)[1]),
-        chanceToWin: Number(stats.winRate) / 100
+        ciLow: stats.ciLow,
+        ciHigh: stats.ciHigh,
+        chanceToWin: stats.winRate
       })
     };
   });
+
+  // 将 tableData 传递给父组件
+  useEffect(() => {
+    if (onData) onData(tableData);
+    // 依赖data而不是tableData，避免tableData每次渲染都变导致死循环
+  }, [data, onData]);
 
   // 构造列
   const columns = [
@@ -428,22 +376,49 @@ export default function AbTestResult({ experimentName, startDate, endDate, metri
       align: "center",
       width: 200,
       render: (text) => {
-        let color = "#bfbfbf";
-        if (text === "Won") color = "#52c41a";
-        if (text === "Lost") color = "#ff4d4f";
-        return <span style={{ color, fontWeight: 600 }}>{text}</span>;
+        let className = "ab-result-not";
+        if (text === "Won") className = "ab-result-won";
+        if (text === "Lost") className = "ab-result-lost";
+        return <span className={className}>{text}</span>;
       }
     }
   ];
+
+  // 渲染逻辑
+  if (loading) return <Spin style={{ marginTop: 80 }} />;
+  if (error) return <Alert type="error" message={"Data loading failed: " + error} showIcon style={{ marginTop: 80 }} />;
+  if (!groups || groups.length < 2) return (
+    <Row justify="center" style={{ minHeight: "100vh" }}>
+      <Col xs={24}>
+        <Card style={{ width: "100%", maxWidth: 3000, margin: "0 auto", borderRadius: 16, boxShadow: "0 4px 24px 0 rgba(0,0,0,0.06)", background: "#fff" }} styles={{ body: { padding: 32 } }}>
+          <Alert type="info" message="No data available" showIcon />
+        </Card>
+      </Col>
+    </Row>
+  );
 
   return (
     <Row justify="center" style={{ minHeight: "100vh" }}>
       <Col xs={24}>
         <Card
           style={{ width: "100%", maxWidth: 2500, margin: "0 auto", borderRadius: 16, boxShadow: "0 4px 24px 0 rgba(0,0,0,0.06)", background: "#fff" }}
-          bodyStyle={{ padding: 32 }}
+          styles={{ body: { padding: 32 } }}
         >
           <div style={{ width: "100%" }}>
+            {metric && (
+              <div style={{
+                textAlign: 'left',
+                color: '#bfc2d4',
+                fontWeight: 900,
+                fontSize: 22,
+                letterSpacing: 1,
+                margin: '0 0 8px 32px',
+                fontFamily: 'Inter, Roboto, PingFang SC, sans-serif',
+                textShadow: '0 2px 12px #3B6FF544',
+              }}>
+                Metrics: {typeof metric === 'string' ? metric.toUpperCase() : Array.isArray(metric) ? metric.map(m => m.toUpperCase()).join(', ') : ''}
+              </div>
+            )}
             <Table
               columns={columns}
               dataSource={tableData}
@@ -454,63 +429,613 @@ export default function AbTestResult({ experimentName, startDate, endDate, metri
               style={{ borderRadius: 12, marginBottom: 32, width: "100%" }}
             />
           </div>
-          {trend && trend.dates && trend.series && (
-            <div style={{ width: "100%", maxWidth: 2500, margin: "24px auto 0 auto" }}>
-              <h3 style={{ textAlign: "center" }}>Daily Data</h3>
-              {(() => {
-                const filteredDates = trend.dates.slice(1);
-                const filteredSeries = trend.series.map(s => ({
-                  ...s,
-                  data: s.data.slice(1)
-                }));
-                return (
-                  <ReactECharts
-                    option={{
-                      tooltip: {
-                        trigger: 'axis',
-                        formatter: (params) => {
-                          let html = params[0]?.axisValueLabel + '<br/>';
-                          params.forEach(item => {
-                            const group = filteredSeries[item.seriesIndex];
-                            const revenueArr = group.revenue || [];
-                            const orderArr = group.order || [];
-                            const idx = item.dataIndex;
-                            const revenue = revenueArr && revenueArr[idx] !== undefined ? Math.round(revenueArr[idx]) : '-';
-                            const order = orderArr && orderArr[idx] !== undefined ? Math.round(orderArr[idx]) : '-';
-                            html += `<span style=\"display:inline-block;margin-right:8px;border-radius:10px;width:10px;height:10px;background:${item.color}\"></span>`;
-                            html += `${item.seriesName}: <b>${item.data}</b> <span style='color:#888'>(${revenue} / ${order})</span><br/>`;
-                          });
-                          return html;
-                        }
-                      },
-                      legend: { data: filteredSeries.map(s => s.variation) },
-                      xAxis: {
-                        type: 'category',
-                        data: filteredDates.map(d => d.slice(0, 10)),
-                        boundaryGap: false
-                      },
-                      yAxis: { type: 'value', name: metricNameMap[metric] || metric },
-                      series: filteredSeries.map((s, idx) => ({
-                        name: s.variation,
-                        type: 'line',
-                        data: s.data,
-                        smooth: true,
-                        symbol: 'circle',
-                        showSymbol: false,
-                        lineStyle: { width: 3 },
-                        itemStyle: { color: idx === 0 ? '#3B6FF5' : '#FF9900' },
-                      }))
-                    }}
-                    style={{ height: 320, width: "100%" }}
-                    notMerge
-                    lazyUpdate
-                  />
-                );
-              })()}
-            </div>
-          )}
         </Card>
       </Col>
     </Row>
+  );
+}
+
+// 趋势图组件
+export function TrendChart({ experimentName, startDate, endDate, metric, userType }) {
+  const [trend, setTrend] = useState(null);
+  useEffect(() => {
+    if (!experimentName || !startDate || !endDate || !metric) return;
+    const userTypeParam = userType ? `&user_type=${userType}` : '';
+    fetch(`/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}${userTypeParam}`)
+      .then(res => res.json())
+      .then(setTrend)
+      .catch(() => setTrend(null));
+  }, [experimentName, startDate, endDate, metric, userType]);
+
+  if (!trend || !trend.dates || !trend.series) return null;
+
+  const filteredDates = trend.dates;
+  // 只要有大于0的数据点就显示该线（只过滤全为0或有小于0的线）
+  const filteredSeries = trend.series.filter(s =>
+    Array.isArray(s.data) &&
+    s.data.every(v => v === null || v === undefined || v >= 0) &&
+    s.data.some(v => v > 0)
+  );
+
+  // 计算所有数据的最小最大值，动态调整y轴区间，上下各加10% padding
+  const allData = [].concat(...filteredSeries.map(s => s.data)).filter(v => typeof v === 'number');
+  let minData = Math.min(...allData);
+  let maxData = Math.max(...allData);
+
+  if (minData === maxData) {
+    // 全部一样，给一点上下padding
+    minData = minData * 0.9;
+    maxData = maxData * 1.1;
+  } else {
+    // 上下各加10% padding
+    const padding = (maxData - minData) * 0.1;
+    minData = minData - padding;
+    maxData = maxData + padding;
+  }
+
+  // 防止minData和maxData太接近0
+  if (Math.abs(maxData) < 1e-6 && Math.abs(minData) < 1e-6) {
+    return <div style={{color:'#fff',textAlign:'center',padding:32}}>暂无有效趋势数据</div>;
+  }
+
+  // mock风格配色
+  const bg = "#23243a";
+  const cardShadow = "0 6px 32px 0 rgba(0,0,0,0.13)";
+  const border = "#2d2f4a";
+  const mainFont = "#fff";
+  const subFont = "#7c819a";
+  const thColor = "#dbe2f9";
+
+  return (
+    <div style={{ background: bg, borderRadius: 0, boxShadow: cardShadow, maxWidth: "100%", margin: "0 auto 48px auto", padding: 0 }}>
+      <div style={{ width: "100%", padding: 32 }}>
+        <ReactECharts
+          option={{
+            backgroundColor: bg,
+            tooltip: {
+              trigger: 'axis',
+              backgroundColor: "#23243a",
+              borderColor: border,
+              borderWidth: 1.5,
+              textStyle: { color: mainFont, fontWeight: 700, fontSize: 16 },
+              formatter: (params) => {
+                let html = `<span style='color:${mainFont};font-weight:700'>${params[0]?.axisValueLabel}</span><br/>`;
+                params.forEach(item => {
+                  const group = filteredSeries[item.seriesIndex];
+                  const revenueArr = group.revenue || [];
+                  const orderArr = group.order || [];
+                  const idx = item.dataIndex;
+                  const revenue = revenueArr && revenueArr[idx] !== undefined ? Math.round(revenueArr[idx]) : '-';
+                  const order = orderArr && orderArr[idx] !== undefined ? Math.round(orderArr[idx]) : '-';
+                  html += `<span style=\"display:inline-block;margin-right:8px;border-radius:10px;width:10px;height:10px;background:${item.color}\"></span>`;
+                  html += `${item.seriesName}: <b style='color:${mainFont}'>${item.data}</b> <span style='color:${subFont}'>(${revenue} / ${order})</span><br/>`;
+                });
+                return html;
+              }
+            },
+            legend: {
+              data: filteredSeries.map(s => s.variation),
+              textStyle: { color: thColor, fontWeight: 700, fontSize: 16 },
+              top: 0,
+              right: 0,
+              orient: 'vertical'
+            },
+            grid: { left: 60, right: 100, top: 60, bottom: 40, borderColor: border },
+            xAxis: {
+              type: 'category',
+              data: filteredDates.map(d => d.slice(0, 10)),
+              boundaryGap: false,
+              axisLine: { lineStyle: { color: border, width: 2 } },
+              axisLabel: { color: thColor, fontWeight: 700, fontSize: 15 },
+              splitLine: { show: false }
+            },
+            yAxis: {
+              type: 'value',
+              name: metricNameMap[metric] || metric,
+              nameTextStyle: {
+                color: thColor,
+                fontWeight: 700,
+                fontSize: 16,
+                padding: [20, 0, 0, -40],
+                align: 'left',
+              },
+              axisLine: { lineStyle: { color: border, width: 2 } },
+              axisLabel: { color: thColor, fontWeight: 700, fontSize: 15 },
+              splitLine: { show: true, lineStyle: { color: border, width: 1, type: 'dashed', opacity: 0.3 } },
+              min: minData,
+              max: maxData
+            },
+            series: filteredSeries.map((s, idx) => ({
+              name: s.variation,
+              type: 'line',
+              data: s.data,
+              smooth: true,
+              symbol: 'circle',
+              showSymbol: false,
+              lineStyle: { width: 3, color: idx === 0 ? '#3B6FF5' : '#FF9900' },
+              itemStyle: { color: idx === 0 ? '#3B6FF5' : '#FF9900' },
+            }))
+          }}
+          style={{ height: 220, width: "100%" }}
+          notMerge
+          lazyUpdate
+        />
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+// 在 GrowthBookTableDemo 组件顶部添加生成 mock 样本的函数
+function genMockSamples(mean, std, n = 100) {
+  // Box-Muller transform
+  return Array.from({ length: n }, () => mean + std * Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random()));
+}
+// 保留唯一的 getPercentTicks 函数定义，其余全部删除
+// GrowthBook 风格表格组件
+export function GrowthBookTableDemo({
+  data: propData,
+  experimentName = '',
+  startDate = '',
+  endDate = '',
+  metric = ''
+}) {
+  // 调试：打印所有后端返回数据
+  console.log('GrowthBookTableDemo props data:', propData);
+  // 颜色变量定义
+  const bg = "#23243a";
+  const border = "#2d2f4a";
+  const thColor = "#dbe2f9";
+  const mainFont = "#fff";
+  const subFont = "#7c819a";
+  const red = "#ff5c5c";
+  const green = "#27ae60";
+  const gray = "#888";
+  const highlight = "#3a2233";
+  // formatCompact函数定义
+  const formatCompact = n =>
+    (typeof n === 'number' && !isNaN(n))
+      ? n.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+      : (n === 0 ? '0' : '-');
+  // ViolinPlot相关变量定义，确保不报ticks未定义错误
+  const violinWidth = 100;
+  let ticks = [], min = -0.02, max = 0.02;
+  // 取第一个有violinData的行，推断ticks/min/max
+  const firstViolin = (Array.isArray(propData) ? propData : []).find(row => row.violinData && Array.isArray(row.violinData.samples) && row.violinData.samples.length > 1);
+  if (firstViolin && firstViolin.violinData) {
+    const samples = firstViolin.violinData.samples;
+    if (samples && samples.length > 1) {
+      const sampleMin = Math.min(...samples);
+      const sampleMax = Math.max(...samples);
+      ticks = getPercentTicks(sampleMin, sampleMax);
+      min = ticks[0] / 100;
+      max = ticks[ticks.length - 1] / 100;
+    }
+  }
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!experimentName || !startDate || !endDate || !metric) return;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/${metric}_bayesian?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}`)
+      .then(res => res.json())
+      .then(res => {
+        setData(res);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, [experimentName, startDate, endDate, metric]);
+
+  // 兼容 props 传入和内部请求
+  const groups = propData || (data && data.groups) || [];
+
+  // 以 group 最小的为 control，剩下为实验组
+  let control, experiments;
+  if (groups && groups.length >= 2) {
+    const sortedGroups = [...groups].sort((a, b) => (a.group > b.group ? 1 : -1));
+    control = sortedGroups[0];
+    experiments = sortedGroups.slice(1);
+  } else {
+    control = null;
+    experiments = [];
+  }
+
+  // 构造表格数据
+  const tableData = (experiments || []).map((g, idx) => {
+    const stats = getUpliftStats(g, control);
+    const mean = stats.uplift;
+    const violinData = {
+      mean: stats.uplift,
+      ciLow: stats.ciLow,
+      ciHigh: stats.ciHigh,
+      samples: stats.upliftSamples,
+      winRate: stats.winRate
+    };
+    const chance = typeof stats.winRate === 'number' ? stats.winRate : null;
+    let result = null;
+    if (typeof stats.ciLow === 'number' && typeof stats.ciHigh === 'number' && typeof chance === 'number') {
+      if (stats.ciLow > 0 && chance > 0.95) result = "Won";
+      else if (stats.ciHigh < 0 && chance < 0.05) result = "Lost";
+      else result = "Not significant";
+    }
+    return {
+      key: g.group || idx,
+      name: `Group ${g.group ?? idx}`,
+      baseline: { pct: control.mean / 100, num: control.total_revenue, den: control.total_order },
+      variation: { pct: g.mean / 100, num: g.total_revenue, den: g.total_order },
+      chance,
+      violin: true,
+      violinData,
+      pctChange: mean,
+      result
+    };
+  });
+
+  // 判断是否为留存多天结构（后端返回d1/d3/d7/d15等key）
+  const isRetentionMultiDay = propData && typeof propData === 'object' && Object.keys(propData).some(k => /^d\d+$/i.test(k));
+  if (isRetentionMultiDay) {
+    console.log('留存率后端返回字段:', propData);
+    const dayKeys = Object.keys(propData).filter(k => /^d\d+$/i.test(k));
+    // 排序为d1、d3、d7、d15
+    const dayOrder = ['d1', 'd3', 'd7', 'd15'];
+    dayKeys.sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    return (
+      <div style={{ background: bg, borderRadius: 0, boxShadow: "0 6px 32px 0 rgba(0,0,0,0.13)", maxWidth: "100%", margin: "0 auto", padding: 0, overflowX: "auto" }}>
+        {dayKeys.map(dayKey => {
+          // 组装成单指标tableData结构
+          const rows = propData[dayKey] || [];
+          // 以group最小的为baseline，剩下为variation
+          const sorted = [...rows].sort((a, b) => (a.group > b.group ? 1 : -1));
+          const baseline = sorted[0];
+          const variations = sorted.slice(1);
+          const tableData = variations.map((g, idx) => {
+            let violinSamples = [];
+            let chance = null;
+            if (Array.isArray(g.posterior_samples) && Array.isArray(baseline.posterior_samples) && g.posterior_samples.length === baseline.posterior_samples.length) {
+              violinSamples = g.posterior_samples.map((v, i) => v - baseline.posterior_samples[i]);
+              const winCount = g.posterior_samples.filter((v, i) => v > baseline.posterior_samples[i]).length;
+              chance = winCount / g.posterior_samples.length;
+            }
+            // 用样本重新计算mean/ciLow/ciHigh
+            let mean, ciLow, ciHigh;
+            if (violinSamples.length > 1) {
+              const sorted = [...violinSamples].sort((a, b) => a - b);
+              mean = violinSamples.reduce((a, b) => a + b, 0) / violinSamples.length;
+              ciLow = sorted[Math.floor(violinSamples.length * 0.025)];
+              ciHigh = sorted[Math.floor(violinSamples.length * 0.975)];
+            } else {
+              // 无样本时用mock样本
+              mean = (g.mean ?? 0) - (baseline.mean ?? 0);
+              ciLow = (g.credible_interval?.[0] ?? 0) - (baseline.credible_interval?.[1] ?? 0);
+              ciHigh = (g.credible_interval?.[1] ?? 0) - (baseline.credible_interval?.[0] ?? 0);
+              violinSamples = genMockSamples(mean, Math.abs(ciHigh - ciLow) / 4, 100);
+            }
+            let result = null;
+            if (typeof ciLow === 'number' && typeof ciHigh === 'number') {
+              if (ciLow > 0) result = "Won";
+              else if (ciHigh < 0) result = "Lost";
+              else result = "Not significant";
+            }
+            return {
+              key: g.group,
+              name: `Group ${g.group}`,
+              baseline: { pct: baseline.mean, num: baseline.numerator, den: baseline.denominator },
+              variation: { pct: g.mean, num: g.numerator, den: g.denominator },
+              chance,
+              violin: true,
+              violinData: { mean, ciLow, ciHigh, samples: violinSamples },
+              pctChange: mean,
+              result
+            };
+          });
+          // 复用单指标表格渲染JSX
+          return (
+            <div key={dayKey} style={{ marginBottom: 32 }}>
+              <div style={{
+                textAlign: 'left',
+                color: '#bfc2d4',
+                fontWeight: 900,
+                fontSize: 22,
+                letterSpacing: 1,
+                margin: '0 0 8px 32px',
+                fontFamily: 'Inter, Roboto, PingFang SC, sans-serif',
+                textShadow: '0 2px 12px #3B6FF544',
+              }}>
+                Metrics: ALL_RETENTION {dayKey.toUpperCase()}
+              </div>
+              <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ color: thColor, fontWeight: 800, fontSize: 15, borderBottom: `2.5px solid ${border}` }}>
+                    <th style={{ textAlign: "left", padding: "16px 0 16px 32px", fontWeight: 800, minWidth: 240, borderRight: `2px solid ${border}`, fontSize: 15, color: thColor }}>Group</th>
+                    <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Baseline</th>
+                    <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Variation</th>
+                    <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Chance to Win</th>
+                    <th style={{ textAlign: "center", padding: 0, background: "transparent", minWidth: 260, borderRight: `2px solid ${border}` }}></th>
+                    <th style={{ textAlign: "left", fontWeight: 800, minWidth: 120, borderRight: `2px solid ${border}` }}>% Change</th>
+                    <th style={{ textAlign: "left", fontWeight: 800, minWidth: 120 }}>Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableData.map((row, idx) => (
+                    <tr key={row.key} style={{ borderBottom: idx === tableData.length - 1 ? "none" : `2px solid ${border}`, height: 68 }}>
+                      <td style={{ textAlign: "left", color: mainFont, fontWeight: 700, fontSize: 18, padding: "22px 0 22px 32px", verticalAlign: "top", minWidth: 240, borderRight: `2px solid ${border}` }}>{row.name}</td>
+                      <td style={{ textAlign: "left", verticalAlign: "middle", minWidth: 140, borderRight: `2px solid ${border}` }}>
+                        <div style={{ fontWeight: 800, fontSize: 18, color: mainFont }}>{typeof row.baseline.pct === 'number' ? (row.baseline.pct * 100).toFixed(4) + '%' : '-'}</div>
+                        <div style={{ color: '#a0a4b8', fontSize: 12, fontStyle: "italic", fontWeight: 500, marginTop: 2 }}>{formatCompact(row.baseline.num)} / {formatCompact(row.baseline.den)}</div>
+                      </td>
+                      <td style={{ textAlign: "left", verticalAlign: "middle", minWidth: 140, borderRight: `2px solid ${border}` }}>
+                        <div style={{ fontWeight: 800, fontSize: 18, color: mainFont }}>{typeof row.variation.pct === 'number' ? (row.variation.pct * 100).toFixed(4) + '%' : '-'}</div>
+                        <div style={{ color: '#a0a4b8', fontSize: 12, fontStyle: "italic", fontWeight: 500, marginTop: 2 }}>{formatCompact(row.variation.num)} / {formatCompact(row.variation.den)}</div>
+                      </td>
+                      <td style={{ textAlign: "left", verticalAlign: "middle", minWidth: 140, borderRight: `2px solid ${border}` }}>
+                        {row.chance !== undefined && row.chance !== null ? (
+                          <span style={{ fontWeight: 800, fontSize: 18, color: row.chance > 0.95 ? green : row.chance < 0.05 ? red : mainFont }}>{(row.chance * 100).toFixed(1)}%</span>
+                        ) : '-'}
+                      </td>
+                      <td style={{ textAlign: "center", verticalAlign: "middle", minWidth: 260, borderRight: `2px solid ${border}` }}>
+                        {row.violinData ? (() => {
+                          let samples = row.violinData.samples;
+                          if (!samples || samples.length <= 1) {
+                            if (
+                              typeof row.violinData.mean === 'number' &&
+                              typeof row.violinData.ciLow === 'number' &&
+                              typeof row.violinData.ciHigh === 'number'
+                            ) {
+                              const mean = row.violinData.mean;
+                              const std = Math.abs(row.violinData.ciHigh - row.violinData.ciLow) / 4;
+                              samples = genMockSamples(mean, std, 100);
+                            }
+                          }
+                          if (samples && samples.length > 1) {
+                            const sampleMin = Math.min(...samples);
+                            const sampleMax = Math.max(...samples);
+                            const ticks = getPercentTicks(sampleMin, sampleMax);
+                            const min = ticks[0] / 100;
+                            const max = ticks[ticks.length - 1] / 100;
+                            return (
+                              <ViolinPlot
+                                samples={samples}
+                                mean={row.violinData.mean}
+                                color={row.violinData.mean >= 0 ? green : red}
+                                ticks={ticks}
+                                min={min}
+                                max={max}
+                                violinWidth={violinWidth}
+                              />
+                            );
+                          }
+                          return <span style={{ color: '#888', fontStyle: 'italic', fontSize: 14 }}>无置信区间数据</span>;
+                        })() : null}
+                      </td>
+                      <td style={{ textAlign: "left", verticalAlign: "middle", fontWeight: 900, fontSize: 18, whiteSpace: "nowrap", minWidth: 120, borderRight: `2px solid ${border}` }}>
+                        {row.pctChange === null ? null : (
+                          <span style={{ color: row.pctChange < 0 ? red : green, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 2 }}>
+                            <span style={{ fontSize: 20, fontWeight: 900 }}>{row.pctChange < 0 ? '↓' : '↑'}</span>
+                            <span style={{ fontSize: 16, fontWeight: 900 }}>{(row.pctChange * 100).toFixed(2)}%</span>
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "left", verticalAlign: "middle", minWidth: 120, fontWeight: 800 }}>
+                        <span className={
+                          row.result === "Lost" ? "ab-result-lost" :
+                          row.result === "Won" ? "ab-result-won" : "ab-result-not"
+                        }>
+                          {row.result}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  // 非留存类，单表格渲染
+  return (
+    <div style={{ background: bg, borderRadius: 0, boxShadow: "0 6px 32px 0 rgba(0,0,0,0.13)", maxWidth: "100%", margin: "0 auto", padding: 0, overflowX: "auto" }}>
+      {metric && (
+        <div style={{
+          textAlign: 'left',
+          color: '#bfc2d4',
+          fontWeight: 900,
+          fontSize: 22,
+          letterSpacing: 1,
+          margin: '0 0 8px 32px',
+          fontFamily: 'Inter, Roboto, PingFang SC, sans-serif',
+          textShadow: '0 2px 12px #3B6FF544',
+        }}>
+          Metrics: {typeof metric === 'string' ? metric.toUpperCase() : Array.isArray(metric) ? metric.map(m => m.toUpperCase()).join(', ') : ''}
+        </div>
+      )}
+      <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ color: thColor, fontWeight: 800, fontSize: 15, borderBottom: `2.5px solid ${border}` }}>
+            <th style={{
+              textAlign: "left",
+              padding: "16px 0 16px 32px",
+              fontWeight: 800,
+              minWidth: 240,
+              borderRight: `2px solid ${border}`,
+              fontSize: 15,
+              color: thColor
+            }}>
+              Group
+            </th>
+            <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Baseline</th>
+            <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Variation</th>
+            <th style={{ textAlign: "left", fontWeight: 800, fontSize: 15, minWidth: 140, borderRight: `2px solid ${border}` }}>Chance to Win</th>
+            <th style={{ textAlign: "center", padding: 0, background: "transparent", minWidth: 260, borderRight: `2px solid ${border}` }}>
+              {/* 删除原有表头刻度线和数字，仅保留空白或必要占位 */}
+              <div style={{ height: 44 }} />
+            </th>
+            <th style={{
+              textAlign: "left",
+              fontWeight: 800,
+              minWidth: 120,
+              borderRight: `2px solid ${border}`
+            }}>
+              % Change
+            </th>
+            <th style={{ textAlign: "left", fontWeight: 800, minWidth: 120 }}>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tableData.map((row, idx) => (
+            <tr key={row.key} style={{ borderBottom: idx === tableData.length - 1 ? "none" : `2px solid ${border}`, height: 68 }}>
+              {/* 指标名 */}
+              <td style={{ textAlign: "left", color: mainFont, fontWeight: 700, fontSize: 18, padding: "22px 0 22px 32px", verticalAlign: "top", minWidth: 240, borderRight: `2px solid ${border}` }}>{row.name}</td>
+              {/* Baseline */}
+              <td style={{
+                textAlign: "left",
+                verticalAlign: "middle",
+                minWidth: 140,
+                borderRight: `2px solid ${border}`,
+                paddingLeft: 0,
+              }}>
+                {/* Baseline 百分比 */}
+                <div style={{ fontWeight: 800, fontSize: 18, color: mainFont }}>
+                  {(row.baseline.pct * 100).toFixed(4)}%
+                </div>
+                <div style={{ color: '#a0a4b8', fontSize: 12, fontStyle: "italic", fontWeight: 500, marginTop: 2 }}>
+                  {formatCompact(row.baseline.num)} / {formatCompact(row.baseline.den)}
+                </div>
+              </td>
+              {/* Variation */}
+              <td style={{
+                textAlign: "left",
+                verticalAlign: "middle",
+                minWidth: 140,
+                borderRight: `2px solid ${border}`,
+                paddingLeft: 0,
+              }}>
+                {/* Variation 百分比 */}
+                <div style={{ fontWeight: 800, fontSize: 18, color: mainFont }}>
+                  {(row.variation.pct * 100).toFixed(4)}%
+                </div>
+                <div style={{ color: '#a0a4b8', fontSize: 12, fontStyle: "italic", fontWeight: 500, marginTop: 2 }}>
+                  {formatCompact(row.variation.num)} / {formatCompact(row.variation.den)}
+                </div>
+              </td>
+              {/* Chance to Win */}
+              <td
+                style={{
+                  textAlign: "left",
+                  verticalAlign: "middle",
+                  minWidth: 140,
+                  borderRight: `2px solid ${border}`,
+                  background: row.chance === null
+                    ? "transparent"
+                    : row.chance === 0
+                      ? "#3a2233"
+                      : row.chance > 0.5
+                        ? "#0e3c3c"
+                        : "#3a2233",
+                  paddingLeft: 0,
+                }}
+              >
+                {row.chance === null ? (
+                  <span style={{ color: gray, fontStyle: "italic", fontWeight: 600, fontSize: 18 }}>no data</span>
+                ) : (
+                  <span style={{
+                    fontWeight: 800,
+                    fontSize: 15,
+                    color: row.chance === 0 ? mainFont : row.chance > 0.5 ? green : red,
+                    borderRadius: 0,
+                    padding: "6px 18px 6px 0",
+                    display: "inline-block",
+                    minWidth: 60,
+                    boxShadow: "none"
+                  }}>{row.chance === 0 ? "0.0%" : `${(row.chance * 100).toFixed(1)}%`}</span>
+                )}
+              </td>
+              {/* Violin plot */}
+              <td style={{ textAlign: "center", verticalAlign: "middle", minWidth: 80, maxWidth: 100, width: 100, padding: 0, borderRight: `2px solid ${border}` }}>
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", maxWidth: 100, margin: "0 auto" }}>
+                  {row.violinData ? (() => {
+                    let samples = row.violinData.samples;
+                    if (!samples || samples.length <= 1) {
+                      // 自动生成 mock 样本
+                      if (
+                        typeof row.violinData.mean === 'number' &&
+                        typeof row.violinData.ciLow === 'number' &&
+                        typeof row.violinData.ciHigh === 'number'
+                      ) {
+                        const mean = row.violinData.mean;
+                        const std = Math.abs(row.violinData.ciHigh - row.violinData.ciLow) / 4;
+                        samples = genMockSamples(mean, std, 100);
+                      }
+                    }
+                    if (samples && samples.length > 1) {
+                      const sampleMin = Math.min(...samples);
+                      const sampleMax = Math.max(...samples);
+                      const ticks = getPercentTicks(sampleMin, sampleMax);
+                      const min = ticks[0] / 100;
+                      const max = ticks[ticks.length - 1] / 100;
+                      return (
+                        <ViolinPlot
+                          samples={samples}
+                          mean={row.violinData.mean}
+                          color={row.violinData.mean >= 0 ? green : red}
+                          ticks={ticks}
+                          min={min}
+                          max={max}
+                          violinWidth={violinWidth}
+                        />
+                      );
+                    }
+                    return <span style={{ color: '#888', fontStyle: 'italic', fontSize: 14 }}>无置信区间数据</span>;
+                  })() : null}
+                </div>
+              </td>
+              {/* % Change */}
+              <td style={{
+                textAlign: "left",
+                verticalAlign: "middle",
+                fontWeight: 900,
+                fontSize: 18,
+                whiteSpace: "nowrap",
+                minWidth: 120,
+                borderRight: `2px solid ${border}`
+              }}>
+                {row.pctChange === null ? null : (
+                  <span style={{
+                    color: row.pctChange < 0 ? red : green,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    gap: 2
+                  }}>
+                    <span style={{ fontSize: 20, fontWeight: 900 }}>{row.pctChange < 0 ? '↓' : '↑'}</span>
+                    <span style={{ fontSize: 16, fontWeight: 900 }}>{(row.pctChange * 100).toFixed(2)}%</span>
+                  </span>
+                )}
+              </td>
+              {/* Result */}
+              <td style={{ textAlign: "left", verticalAlign: "middle", minWidth: 120, fontWeight: 800 }}>
+                <span className={
+                  row.result === "Lost" ? "ab-result-lost" :
+                  row.result === "Won" ? "ab-result-won" : "ab-result-not"
+                }>
+                  {row.result}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

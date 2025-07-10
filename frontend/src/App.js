@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import { Input, DatePicker, Button, Form, Select } from 'antd';
 import 'antd/dist/reset.css';
+import './dark-input.css';
+import './form-bar.css';
+import { ConfigProvider } from 'antd';
+import { GrowthBookTableDemo, TrendChart } from './components/AbTestResult';
 
 const { Option } = Select;
 
 // Category -> Metric 映射
 const metricOptionsMap = {
   business: [
-    { value: 'aov', label: 'AOV' },
-    { value: 'arpu', label: 'ARPU' },
-    { value: 'arppu', label: 'ARPPU' },
-    { value: 'subscribe_rate', label: 'Subscribe Rate' },
-    { value: 'payment_rate_all', label: 'Payment Rate (All)' },
-    { value: 'payment_rate_new', label: 'Payment Rate (New Users)' },
-    { value: 'ltv', label: 'LTV' },
-    { value: 'cancel_sub', label: 'Cancel Subscribe Rate' },
-    { value: 'first_new_sub', label: 'First New User Subscribe Rate' },
-    { value: 'recharge_rate', label: 'Recharge Rate' }
-  ],
+    { value: "aov", label: "AOV" },
+    { value: "arpu", label: "ARPU" },
+    { value: "arppu", label: "ARPPU" },
+    { value: "payment_rate_all", label: "Payment Rate All" },
+    { value: "payment_rate_new", label: "Payment Rate New Users" },
+    { value: "AOV_new_day", label: "AOV New Users" },
+    { value: "cancel_sub_day", label: "Cancel Rate 3 Days" },
+    { value: "subscribe_new_day_aov", label: "Subscribe AOV New Users Day1" }
+  ],  
   engagement: [
     { value: 'continue', label: 'Continue' },
     { value: 'conversation_reset', label: 'Conversation Reset' },
@@ -46,110 +48,274 @@ const metricOptionsMap = {
   ]
 };
 
+// 渲染多指标卡片
+function renderMetricsCards(params, mockTableData) {
+  if (!params?.isAllMetrics) {
+    return <GrowthBookTableDemo data={mockTableData} metric={params?.metric} />;
+  }
+  if (!mockTableData || Object.keys(mockTableData).length === 0) {
+    return <div style={{ color: "#fff", textAlign: "center", padding: 32 }}>暂无多指标数据</div>;
+  }
+  return (
+    <>
+      {Object.keys(mockTableData).map(metricKey => {
+        const metricData = mockTableData[metricKey];
+        let groups = [];
+        if (Array.isArray(metricData)) groups = metricData;
+        else if (Array.isArray(metricData?.groups)) groups = metricData.groups;
+        else if (Array.isArray(metricData?.data)) groups = metricData.data;
+        return (
+          <div key={metricKey} style={{ margin: "48px auto", maxWidth: 1400, width: "98%" }}>
+            <div style={{
+              color: "#bfc2d4",
+              fontWeight: 900,
+              fontSize: 28,
+              letterSpacing: 1,
+              margin: '0 0 16px 32px',
+              fontFamily: 'Inter, Roboto, PingFang SC, sans-serif',
+              textShadow: '0 2px 12px #3B6FF544'
+            }}>
+              {metricKey.replace(/_/g, " ").toUpperCase()}
+            </div>
+            <GrowthBookTableDemo
+              data={groups}
+              metric={metricKey}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function App() {
   const [params, setParams] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const [category, setCategory] = useState('business');
+  const [mockTableData, setMockTableData] = useState({});
 
   const onFinish = (values) => {
+    setLoading(true);
+    const isAllMetrics = values.metric.includes('all');
     setParams({
       experimentName: values.experimentName,
       category: values.category,
       metric: values.metric,
       startDate: values.daterange[0].format('YYYY-MM-DD'),
       endDate: values.daterange[1].format('YYYY-MM-DD'),
+      isAllMetrics,
     });
+
+    if (isAllMetrics) {
+      const metrics = (metricOptionsMap[values.category] || [])
+        .map(opt => opt.value)
+        .filter(val => val !== 'all');
+      Promise.all(metrics.map(metric =>
+        fetch(
+          `/api/${metric}_bayesian?experiment_name=${values.experimentName}` +
+          `&start_date=${values.daterange[0].format('YYYY-MM-DD')}` +
+          `&end_date=${values.daterange[1].format('YYYY-MM-DD')}`
+        )
+        .then(res => res.json())
+        .catch(() => null)
+      )).then(results => {
+        const data = {};
+        metrics.forEach((metric, idx) => {
+          data[metric] = results[idx] || { groups: [] };
+        });
+        setMockTableData(data);
+      }).finally(() => setLoading(false));
+    } else {
+      fetch(
+        `/api/${values.metric[0]}_bayesian?experiment_name=${values.experimentName}` +
+        `&start_date=${values.daterange[0].format('YYYY-MM-DD')}` +
+        `&end_date=${values.daterange[1].format('YYYY-MM-DD')}`
+      )
+        .then(res => res.json())
+        .then(res => {
+          setMockTableData(res && res.groups ? res.groups : []);
+        })
+        .catch(() => setMockTableData([]))
+        .finally(() => setLoading(false));
+    }
   };
 
-  // 动态渲染 Metric 选项
   const metricOptions = metricOptionsMap[category] || [];
-  // 添加"所有指标"选项
   const allMetricsOption = { value: 'all', label: 'All Metrics' };
   const metricOptionsWithAll = [allMetricsOption, ...metricOptions];
 
+  // 新增 handleAllMetricsClick 方法，功能等价于自动选择 all 并提交
+  const handleAllMetricsClick = () => {
+    form.setFieldsValue({ metric: ['all'] });
+    form.submit();
+  };
+
   return (
-    <div style={{ width: '95%', maxWidth: 2500, margin: '40px auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 32 }}>
-        <Form
-          form={form}
-          layout="inline"
-          onFinish={onFinish}
-          style={{ marginBottom: 32, justifyContent: 'center', display: 'flex' }}
-          initialValues={{ metric: [], category: 'business' }}
-        >
-          <Form.Item
-            name="experimentName"
-            label="Experiment Name"
-            rules={[{ required: true, message: 'Please input experiment name' }]}
+    <ConfigProvider
+      theme={{
+        components: {
+          Input: {
+            colorBgContainer: '#23243a',
+            colorText: '#fff',
+            colorBorder: '#3B6FF5',
+            colorTextPlaceholder: '#fff',
+            fontWeightStrong: 700,
+            controlOutlineWidth: 2,
+            fontSize: 13,
+          },
+          Select: {
+            fontSize: 13,
+          },
+        },
+      }}
+    >
+      <div style={{ background: '#18192a', minHeight: '100vh', padding: '32px 0' }}>
+        <h1 style={{
+          textAlign: 'center',
+          color: '#fff',
+          fontWeight: 900,
+          fontSize: 38,
+          letterSpacing: 2,
+          marginBottom: 32,
+          fontFamily: 'Inter, Roboto, PingFang SC, sans-serif',
+          textShadow: '0 4px 24px #3B6FF544, 0 1.5px 0 #3B6FF5',
+        }}>
+          FlowGPT AB Testing Platform
+        </h1>
+        <div className="form-bar">
+          <Form
+            form={form}
+            onFinish={onFinish}
+            initialValues={{ metric: [], category: 'business' }}
+            style={{ display: 'flex', width: '100%' }}
           >
-            <Input placeholder="Please input experiment name" style={{ width: 220 }} />
-          </Form.Item>
-          <Form.Item
-            name="daterange"
-            label="Date Range"
-            rules={[{ required: true, message: 'Please select experiment period' }]}
-          >
-            <DatePicker.RangePicker style={{ width: 260 }} />
-          </Form.Item>
-          <Form.Item
-            name="category"
-            label="Category"
-            rules={[{ required: true, message: 'Please select a category' }]}
-          >
-            <Select
-              style={{ width: 180 }}
-              onChange={val => {
-                setCategory(val);
-                form.setFieldsValue({ metric: [] });
-              }}
-            >
-              <Option value="retention">Retention</Option>
-              <Option value="business">Business</Option>
-              <Option value="engagement">Engagement</Option>
-              <Option value="chat">Chat Behavior</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item
-            name="metric"
-            label="Metric"
-            rules={[{ required: true, message: 'Please select metrics' }]}
-          >
-            <Select
-              style={{ width: 220 }}
-              mode="multiple"
-              allowClear
-              placeholder="Select metrics"
-              onChange={selected => {
-                // 如果选了 all，只保留 all
-                if (selected.includes('all')) {
-                  form.setFieldsValue({ metric: ['all'] });
-                } else {
-                  // 如果 all 没选，正常多选
-                  form.setFieldsValue({ metric: selected.filter(v => v !== 'all') });
-                }
-              }}
-            >
-              {metricOptionsWithAll.map(opt => (
-                <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit">
-              Search
-            </Button>
-          </Form.Item>
-        </Form>
+            <div className="form-item">
+              <div className="form-label">Experiment Name</div>
+              <Form.Item name="experimentName" noStyle rules={[{ required: true, message: 'Please input experiment name' }]}>
+                <Input
+                  placeholder="Please input experiment name"
+                  className="form-input dark-input"
+                  style={{
+                    background: '#23243a',
+                    color: '#fff',
+                    border: '1.5px solid #3B6FF5',
+                    fontWeight: 700,
+                    caretColor: '#fff',
+                  }}
+                />
+              </Form.Item>
+            </div>
+            <div className="form-item">
+              <div className="form-label">Date Range</div>
+              <Form.Item name="daterange" noStyle rules={[{ required: true, message: 'Please select experiment period' }]}>
+                <DatePicker.RangePicker className="form-picker" inputReadOnly={true} placeholder={["Start Date", "End Date"]} />
+              </Form.Item>
+            </div>
+            <div className="form-item">
+              <div className="form-label">Category</div>
+              <Form.Item name="category" noStyle rules={[{ required: true, message: 'Please select a category' }]}>
+                <Select
+                  className="form-select"
+                  dropdownStyle={{ background: '#23243a', color: '#fff' }}
+                  dropdownMatchSelectWidth={false}
+                  optionLabelProp="label"
+                  getPopupContainer={trigger => trigger.parentNode}
+                  placeholder={<span style={{ color: '#fff' }}>请选择分区</span>}
+                  onChange={val => { setCategory(val); form.setFieldsValue({ metric: [] }); }}
+                >
+                  <Option value="retention">Retention</Option>
+                  <Option value="business">Business</Option>
+                  <Option value="engagement">Engagement</Option>
+                  <Option value="chat">Chat Behavior</Option>
+                </Select>
+              </Form.Item>
+            </div>
+            <div className="form-item">
+              <div className="form-label">Metric</div>
+              <Form.Item name="metric" noStyle rules={[{ required: true, message: 'Please select metrics' }]}>
+                <Select
+                  className="form-select"
+                  mode="multiple"
+                  allowClear
+                  placeholder={<span style={{ color: '#fff' }}>Select metrics</span>}
+                  dropdownStyle={{ background: '#23243a', color: '#fff' }}
+                  dropdownMatchSelectWidth={false}
+                  optionLabelProp="label"
+                  getPopupContainer={trigger => trigger.parentNode}
+                  onChange={selected => {
+                    if (selected.includes('all')) {
+                      form.setFieldsValue({ metric: ['all'] });
+                    } else {
+                      form.setFieldsValue({ metric: selected.filter(v => v !== 'all') });
+                    }
+                  }}
+                >
+                  {metricOptionsWithAll.map(opt => (
+                    <Option key={opt.value} value={opt.value}>{opt.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </div>
+            {/* 两个主按钮，样式完全一致 */}
+            <div className="form-item" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Button
+                className="form-btn"
+                type="primary"
+                onClick={handleAllMetricsClick}
+                loading={loading}
+                style={{ fontWeight: 800 }}
+              >
+                All Search
+              </Button>
+              <Button
+                className="form-btn"
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                style={{ fontWeight: 800 }}
+              >
+                Search
+              </Button>
+            </div>
+          </Form>
+        </div>
+        <div style={{ height: 24 }} />
+
+        {/* mock表格分区 */}
+        <div style={{
+          background: '#23243a',
+          borderRadius: 0,
+          boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)',
+          margin: '0 auto 0 auto',
+          maxWidth: '95%',
+          padding: '8px 0',
+          minHeight: 0
+        }}>
+          {renderMetricsCards(params, mockTableData)}
+        </div>
+
+        {/* 趋势图分区 */}
+        <div style={{
+          background: '#23243a',
+          borderRadius: 0,
+          boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)',
+          margin: '0 auto 0 auto',
+          maxWidth: '95%',
+          padding: '8px 0',
+          minHeight: 0
+        }}>
+          {params && (
+            <TrendChart
+              experimentName={params.experimentName}
+              metric={params.metric}
+              startDate={params.startDate}
+              endDate={params.endDate}
+            />
+          )}
+        </div>
       </div>
-      {params && (
-        <AbTestResult
-          experimentName={params.experimentName}
-          metric={params.metric}
-          startDate={params.startDate}
-          endDate={params.endDate}
-        />
-      )}
-    </div>
+    </ConfigProvider>
   );
 }
 
