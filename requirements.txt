@@ -1,0 +1,5 @@
+flask
+sqlalchemy
+pymysql
+requests
+# 其他你的依赖...

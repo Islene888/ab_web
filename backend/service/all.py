@@ -1,13 +1,12 @@
 # backend/service/all.py
 from flask import Blueprint, request, jsonify
 from collections import defaultdict
-from backend.service.service import get_db_connection
+from backend.service.service import get_db_connection, bayesian_summary
 from backend.service.config import INDICATOR_CONFIG
 
 
 all_bp = Blueprint("all", __name__)
 
-print("all.py loaded!!")
 
 CATEGORY_METRIC_MAP = {
     "business": ['aov', 'arpu', 'arppu', 'subscribe_rate', 'payment_rate_all', 'payment_rate_new', 'ltv', 'cancel_sub', 'first_new_sub', 'recharge_rate'],
@@ -83,4 +82,75 @@ def all_trend():
             "dates": dates,
             "series": series
         }
+    return jsonify(all_results)
+
+
+
+# === 新增的API函数 ===
+@all_bp.route('/api/all_bayesian', methods=['GET'])
+def all_bayesian():
+    # 1. 获取和验证请求参数 (这部分不变)
+    experiment_name = request.args.get('experiment_name')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    category = request.args.get('category')
+
+    if not all([experiment_name, start_date, end_date, category]):
+        return jsonify({"error": "参数缺失，请提供 experiment_name, start_date, end_date 和 category"}), 400
+
+    metric_names = CATEGORY_METRIC_MAP.get(category, [])
+    if not metric_names:
+        return jsonify({"error": f"未知的类别: {category}"}), 400
+
+    all_results = {}
+    engine = get_db_connection()
+
+    # --- BUG 修复：在这里定义 getval 辅助函数 ---
+    def getval(row, field):
+        if isinstance(field, int):
+            try:
+                return row[field]
+            except (IndexError, TypeError):
+                return None
+        elif isinstance(field, str):
+            if isinstance(row, dict):
+                return row.get(field)
+        return None
+
+    # --- 修复结束 ---
+
+    for metric in metric_names:
+        cfg = INDICATOR_CONFIG.get(metric)
+        if not cfg:
+            continue
+
+        rows = cfg["fetch_func"](experiment_name, start_date, end_date, engine)
+        group_dict = defaultdict(list)
+        group_revenue = defaultdict(float)
+        group_order = defaultdict(int)
+
+        for row in rows:
+            # --- BUG 修复：使用 getval 函数获取数据 ---
+            variation_id = getval(row, cfg.get("variation_field", 0))
+            value = getval(row, cfg.get("value_field"))
+            revenue = getval(row, cfg.get("revenue_field"))
+            order = getval(row, cfg.get("order_field"))
+            # --- 修复结束 ---
+
+            if value is not None and variation_id is not None:
+                group_dict[variation_id].append(float(value))
+                group_revenue[variation_id] += float(revenue or 0)
+                group_order[variation_id] += int(order or 0)
+
+        metric_groups_summary = []
+        for group, value_list in group_dict.items():
+            if not value_list: continue
+            summary = bayesian_summary(value_list)
+            summary["group"] = group
+            summary["total_revenue"] = group_revenue[group]
+            summary["total_order"] = group_order[group]
+            metric_groups_summary.append(summary)
+
+        all_results[metric] = {"groups": metric_groups_summary}
+
     return jsonify(all_results)

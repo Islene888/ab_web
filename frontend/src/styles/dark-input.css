@@ -1,0 +1,47 @@
+.dark-input,
+.dark-input:focus,
+.dark-input:active,
+.dark-input:visited,
+.dark-input:enabled,
+.dark-input[aria-disabled="false"],
+.dark-input[aria-disabled="false"]:not(:placeholder-shown),
+input.dark-input,
+input.dark-input:focus,
+input.dark-input:active,
+input.dark-input:visited,
+input.dark-input:enabled,
+input.dark-input[aria-disabled="false"],
+input.dark-input[aria-disabled="false"]:not(:placeholder-shown) {
+  background: #23243a !important;
+  color: #fff !important;
+  border: 1.5px solid #e3e5ea !important;
+  font-weight: 700;
+  caret-color: #fff;
+  font-size: 13px;
+}
+.dark-input::placeholder,
+input.dark-input::placeholder {
+  color: #fff !important;
+  opacity: 1;
+}
+
+.form-input.ant-input,
+.form-input.ant-input:focus,
+.form-input.ant-input[aria-disabled="false"],
+.form-input.ant-input[aria-disabled="false"]:not(:placeholder-shown),
+.dark-input.ant-input,
+.dark-input.ant-input:focus,
+.dark-input.ant-input[aria-disabled="false"],
+.dark-input.ant-input[aria-disabled="false"]:not(:placeholder-shown) {
+  background: #dddde6 !important;
+  color: #fff !important;
+  border: 1.5px solid #eaebef !important;
+  font-weight: 700;
+  caret-color: #fff;
+  font-size: 16px;
+}
+.form-input.ant-input::placeholder,
+.dark-input.ant-input::placeholder {
+  color: #fff !important;
+  opacity: 1;
+} 
