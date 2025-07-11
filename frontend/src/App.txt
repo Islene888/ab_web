@@ -4,7 +4,7 @@ import 'antd/dist/reset.css';
 import './dark-input.css';
 import './form-bar.css';
 import { ConfigProvider } from 'antd';
-import { GrowthBookTableDemo, TrendChart } from './components/AbTestResult';
+import { AbTestApiProcess, AbTestTrendChart } from './components/AbTestResult';
 
 const { Option } = Select;
 
@@ -51,7 +51,7 @@ const metricOptionsMap = {
 // 渲染多指标卡片
 function renderMetricsCards(params, mockTableData) {
   if (!params?.isAllMetrics) {
-    return <GrowthBookTableDemo data={mockTableData} metric={params?.metric} />;
+    return <AbTestApiProcess data={mockTableData} metric={params?.metric} />;
   }
   if (!mockTableData || Object.keys(mockTableData).length === 0) {
     return <div style={{ color: "#fff", textAlign: "center", padding: 32 }}>暂无多指标数据</div>;
@@ -77,7 +77,7 @@ function renderMetricsCards(params, mockTableData) {
             }}>
               {metricKey.replace(/_/g, " ").toUpperCase()}
             </div>
-            <GrowthBookTableDemo
+            <AbTestApiProcess
               data={groups}
               metric={metricKey}
             />
@@ -306,7 +306,7 @@ function App() {
           minHeight: 0
         }}>
           {params && (
-            <TrendChart
+            <AbTestTrendChart
               experimentName={params.experimentName}
               metric={params.metric}
               startDate={params.startDate}

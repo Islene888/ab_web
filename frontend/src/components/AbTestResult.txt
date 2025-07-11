@@ -436,7 +436,7 @@ export function BayesianTable({ experimentName, startDate, endDate, metric, user
 }
 
 // 趋势图组件
-export function TrendChart({ experimentName, startDate, endDate, metric, userType }) {
+export function AbTestTrendChart({ experimentName, startDate, endDate, metric, userType }) {
   const [trend, setTrend] = useState(null);
   useEffect(() => {
     if (!experimentName || !startDate || !endDate || !metric) return;
@@ -570,14 +570,14 @@ export function TrendChart({ experimentName, startDate, endDate, metric, userTyp
 
 
 
-// 在 GrowthBookTableDemo 组件顶部添加生成 mock 样本的函数
+// 在 AbTestApiProcess 组件顶部添加生成 mock 样本的函数
 function genMockSamples(mean, std, n = 100) {
   // Box-Muller transform
   return Array.from({ length: n }, () => mean + std * Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random()));
 }
 // 保留唯一的 getPercentTicks 函数定义，其余全部删除
 // GrowthBook 风格表格组件
-export function GrowthBookTableDemo({
+export function AbTestApiProcess({
   data: propData,
   experimentName = '',
   startDate = '',
@@ -585,7 +585,7 @@ export function GrowthBookTableDemo({
   metric = ''
 }) {
   // 调试：打印所有后端返回数据
-  console.log('GrowthBookTableDemo props data:', propData);
+  console.log('AbTestApiProcess props data:', propData);
   // 颜色变量定义
   const bg = "#23243a";
   const border = "#2d2f4a";

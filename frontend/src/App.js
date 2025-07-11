@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ExperimentPage from './page/ExperimentPage';
-import AbTestResultPage from './page/AbTestResultPage';
+import AbTestResultPage from './page/AbTestResultPage.jsx';
 import './styles/dark-input.css';
 import './styles/form-bar.css';
 
