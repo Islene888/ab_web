@@ -1,21 +1,18 @@
-# backend/service/all_in_one.py
-
 from flask import Blueprint, request, jsonify
 from collections import defaultdict
-from backend.service.service import get_db_connection, bayesian_summary
+from backend.service.service import get_db_connection, bayesian_summary, get_local_cache_engine, set_abtest_cache
 from backend.service.config import INDICATOR_CONFIG
 import traceback
+import functools
+import json
 
 bp = Blueprint("all_in_one", __name__)
 
-@bp.route('/api/all_category_all_metrics', methods=['GET'])
-def all_category_all_metrics():
-    experiment_name = request.args.get('experiment_name')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    if not experiment_name or not start_date or not end_date:
-        return jsonify({"error": "缺少参数"}), 400
+def make_cache_key(experiment_name, start_date, end_date):
+    return f"{experiment_name}:{start_date}:{end_date}"
 
+@functools.lru_cache(maxsize=64)
+def cached_all_metrics(experiment_name, start_date, end_date):
     engine = get_db_connection()
     all_results = {}
 
@@ -67,4 +64,34 @@ def all_category_all_metrics():
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
-    return jsonify(all_results)
+    return json.dumps(all_results)
+
+@bp.route('/api/all_category_all_metrics', methods=['GET'])
+def all_category_all_metrics():
+    experiment_name = request.args.get('experiment_name')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    if not experiment_name or not start_date or not end_date:
+        return jsonify({"error": "缺少参数"}), 400
+
+    # 查询
+    result_str = cached_all_metrics(experiment_name, start_date, end_date)
+    result_json = json.loads(result_str)
+
+    # ★★★ 只用本地缓存库写入
+    try:
+        local_engine = get_local_cache_engine()
+        set_abtest_cache(
+            engine_local=local_engine,
+            query_type="all_metrics",
+            experiment_name=experiment_name,
+            metric="ALL",
+            category="ALL",
+            start_date=start_date,
+            end_date=end_date,
+            result_json=result_json,
+        )
+    except Exception as e:
+        print(f"abtest cache persist error: {e}")
+
+    return jsonify(result_json)
