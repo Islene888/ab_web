@@ -1,4 +1,4 @@
-// src/components/AbTest/PhaseSelector.jsx
+// src/components/SearchTable/PhaseSelector.jsx
 
 import React from 'react';
 import { Select } from 'antd';

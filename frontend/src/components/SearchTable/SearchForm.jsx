@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Form, Button, Spin, Select } from 'antd';
 import dayjs from 'dayjs';
-import ExperimentSelector from './ExperimentSelector';
-import PhaseSelector from './PhaseSelector';
-import DateRangePicker from './DateRangePicker';
-import MetricSelector from './MetricSelector';
-import { fetchExperiments, metricOptionsMap } from '../../api/growthbook';
+import ExperimentSelector from './singleItem/ExperimentSelector';
+import PhaseSelector from './singleItem/PhaseSelector';
+import DateRangePicker from './singleItem/DateRangePicker';
+import MetricSelector from './singleItem/MetricSelector';
+import {  metricOptionsMap } from '../../config/metricOptionsMap';
+import { fetchExperiments } from '../../api/GrowthbookApi';
 
 const { Option } = Select;
 
-export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearch }) {
+export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearch, onAllSearch }) {
   const [form] = Form.useForm();
   const [experiments, setExperiments] = useState([]);
   const [phaseOptions, setPhaseOptions] = useState([]);
@@ -81,6 +82,16 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
     form.setFieldsValue({ metric: [] });
   };
 
+  // All Search 按钮事件，自动填充 all（你可自定义逻辑）
+  const handleAllSearch = () => {
+    const values = form.getFieldsValue();
+    // 设为全量搜索，比如 metric = ['all'] 或类似逻辑
+    onAllSearch && onAllSearch({
+      ...values,
+      metric: ['all']
+    });
+  };
+
   return loading ? (
     <Spin />
   ) : (
@@ -120,7 +131,15 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
         />
       </Form.Item>
       <Form.Item>
-        <Button type="primary" htmlType="submit">Search</Button>
+        <Button type="primary" htmlType="submit" style={{ marginRight: 8 }}>
+          Search
+        </Button>
+        <Button
+          type="primary"
+          onClick={handleAllSearch}
+        >
+          All Search
+        </Button>
       </Form.Item>
     </Form>
   );

@@ -1,4 +1,4 @@
-// src/components/AbTest/MetricSelector.jsx
+// src/components/SearchTable/MetricSelector.jsx
 
 import React from 'react';
 import { Select } from 'antd';

@@ -1,4 +1,4 @@
-// src/components/AbTest/DateRangePicker.jsx
+// src/components/SearchTable/DateRangePicker.jsx
 
 import React from 'react';
 import { DatePicker } from 'antd';

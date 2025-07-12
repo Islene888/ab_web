@@ -1,4 +1,4 @@
-// src/components/AbTest/ExperimentSelector.jsx
+// src/components/SearchTable/ExperimentSelector.jsx
 
 import React, { useEffect, useState } from 'react';
 import { Select, Spin } from 'antd';
