@@ -2,7 +2,7 @@
 
 import React from "react";
 
-// 1. 统计工具和核函数 (从原文件移动至此)
+// 1. 统计工具和核函数
 function getUpliftStats(exp, control) {
   if (!exp || !control || !exp.posterior_samples || !control.posterior_samples) {
       return { uplift: null, ciLow: null, ciHigh: null, winRate: null, riskProb: null, risk: null, upliftSamples: [] };
@@ -228,14 +228,14 @@ export default function AbTestBayesianTable({ metric, data: groups }) {
   return (
     <div style={{ background: bg, borderRadius: 0, boxShadow: "0 6px 32px 0 rgba(0,0,0,0.13)", maxWidth: "100%", margin: "0 auto", padding: 0, overflowX: "auto" }}>
       {metric && (
-        <div style={{ textAlign: "left", color: "#bfc2d4", fontWeight: 900, fontSize: 22, letterSpacing: 1, margin: "0 0 8px 32px", fontFamily: "Inter, Roboto, PingFang SC, sans-serif", textShadow: "0 2px 12px #3B6FF544" }}>
-          Metrics: {metric.toUpperCase()}
+        <div style={{ textAlign: "left", color: "#FFB300", fontWeight: 900, fontSize: 16, letterSpacing: 0, margin: "10px 0 2px 5px", fontFamily: "Inter, Roboto, PingFang SC, sans-serif", textShadow: "0 2px 12px #3B6FF544" }}>
+          {metric.toUpperCase()}
         </div>
       )}
       <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ color: thColor, fontWeight: 800, fontSize: 15, borderBottom: `2.5px solid ${border}` }}>
-            <th style={{ textAlign: "left", padding: "16px 0 16px 32px", minWidth: 240, borderRight: `2px solid ${border}` }}>Group</th>
+            <th style={{ textAlign: "left", padding: "8px 0 8px 16px", minWidth: 120, borderRight: `2px solid ${border}` }}>Group</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Baseline</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Variation</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Chance to Win</th>

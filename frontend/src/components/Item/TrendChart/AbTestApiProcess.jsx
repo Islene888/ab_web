@@ -1,15 +1,6 @@
-// AbTestTrendChart.jsx
-
 import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 
-/**
- * 趋势图组件
- * @param {string} experimentName 实验名
- * @param {string} startDate 开始日期
- * @param {string} endDate 结束日期
- * @param {string|array} metric 指标名
- */
 export default function AbTestTrendChart({ experimentName, startDate, endDate, metric }) {
   const [trend, setTrend] = useState(null);
 
@@ -17,7 +8,6 @@ export default function AbTestTrendChart({ experimentName, startDate, endDate, m
     const metricName = Array.isArray(metric) ? metric[0] : metric;
     if (!experimentName || !startDate || !endDate || !metricName) return;
 
-    // 拉取趋势数据
     fetch(`/api/${metricName}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}`)
       .then(res => res.json())
       .then(setTrend)
@@ -25,32 +15,24 @@ export default function AbTestTrendChart({ experimentName, startDate, endDate, m
   }, [experimentName, startDate, endDate, metric]);
 
   if (!trend || !trend.dates || !trend.series || trend.series.length === 0) {
-    return null; // 没有趋势数据就不渲染
+    return null;
   }
 
-  // 视觉风格参数，可根据需要调整
   const bg = "#23243a";
-  // const border = "#2d2f4a";
-  // const mainFont = "#fff";
-  // const thColor = "#dbe2f9";
-
   return (
     <div style={{
       background: bg,
       borderRadius: 0,
       boxShadow: "0 6px 32px 0 rgba(0,0,0,0.13)",
       maxWidth: "100%",
-      margin: "0 auto 48px auto",
+      margin: "0 auto 32px auto",
       padding: 0
     }}>
       <div style={{ width: "100%", padding: 32 }}>
         <ReactECharts
           option={{
             backgroundColor: bg,
-            tooltip: {
-              trigger: 'axis',
-              axisPointer: { type: 'cross' }
-            },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
             legend: { data: trend.series.map(s => s.variation), textStyle: { color: '#cfd6f4' } },
             grid: { left: 40, right: 20, bottom: 30, top: 50, containLabel: true },
             xAxis: {
