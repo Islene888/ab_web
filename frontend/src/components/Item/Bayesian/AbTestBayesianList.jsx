@@ -36,7 +36,7 @@ export function AbTestBayesianList({ loading, error, data, mode = "single", metr
             <div
               key={metricName}
               style={{
-                margin: idx === 0 ? "6px auto 36px" : "56px auto 36px", // 第一项间隔略小，后续大一点
+                margin: idx === 0 ? "56px auto 26px" : "6px auto 26px", // 第一项间隔略小，后续大一点
                 maxWidth: 1400,
                 width: "98%",
               }}

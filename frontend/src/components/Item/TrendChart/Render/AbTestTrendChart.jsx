@@ -61,7 +61,7 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, u
       borderRadius: 0,
       boxShadow: cardShadow,
       maxWidth: "100%",
-      margin: "0 auto 48px auto",
+      margin: "0 auto 0px auto",  // Adjust the bottom margin here
       padding: 0
     }}>
       <div style={{ width: "100%", padding: 32 }}>
@@ -90,8 +90,9 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, u
               }
             },
             legend: {
+              show: false,  // 隐藏右上角的 legend
               data: filteredSeries.map(s => s.variation),
-              textStyle: { color: thColor, fontWeight: 700, fontSize: 16 },
+              textStyle: { color:"#FFD700", fontWeight: 700, fontSize: 16 },  // 改为金色
               top: 0,
               right: 0,
               orient: 'vertical'
@@ -109,15 +110,15 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, u
               type: 'value',
               name: metric,
               nameTextStyle: {
-                color: thColor,
+                color: "#FFB300",
                 fontWeight: 700,
-                fontSize: 16,
+                fontSize: 20,
                 padding: [20, 0, 0, -40],
                 align: 'left',
               },
               axisLine: { lineStyle: { color: border, width: 2 } },
               axisLabel: { color: thColor, fontWeight: 700, fontSize: 15 },
-              splitLine: { show: true, lineStyle: { color: border, width: 1, type: 'dashed', opacity: 0.3 } },
+              splitLine: { show: false, lineStyle: { color: border, width: 1, type: 'dashed', opacity: 0.3 } },
               min: minData,
               max: maxData
             },

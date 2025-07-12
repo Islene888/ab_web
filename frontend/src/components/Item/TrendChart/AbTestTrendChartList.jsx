@@ -22,24 +22,26 @@ export default function AbTestTrendChartList({
         <div
           key={metric}
           style={{
-            margin: "36px 0 56px 0", // 上下留空间
+            margin: "36px 0",  // 控制间隔为12px，避免太大的间隔
             background: "none",
           }}
         >
-          <div
+          {/* 如果你不需要标题，删除或注释掉这个部分 */}
+          {/* <div
             style={{
               color: "#FFD700",
               fontWeight: 900,
               fontSize: 22,
               letterSpacing: 1,
               marginBottom: 10,
-              marginLeft: 24,
+              marginLeft: 4,
               fontFamily: "Inter, Roboto, PingFang SC, sans-serif",
               textShadow: "0 2px 12px #3B6FF544",
             }}
           >
             {metric && metric.toUpperCase()}
-          </div>
+          </div> */}
+
           <AbTestTrendChart
             experimentName={experimentName}
             startDate={startDate}

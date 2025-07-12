@@ -105,9 +105,9 @@ export default function AbTestResultPage() {
         textAlign: 'center',
         fontWeight: 900,
         fontSize: 38,
-        marginBottom: 32
+        marginBottom: 50
       }}>
-        FlowGPT AB Testing Results
+        FlowGPT  AB  Testing  Results
       </h1>
 
       {/* 搜索表单 */}
@@ -118,7 +118,7 @@ export default function AbTestResultPage() {
         initialPhaseIdx={initialValues.phase}
       />
 
-      {loading && <Spin style={{ display: 'block', margin: '40px auto' }} />}
+      {loading && <Spin style={{ display: 'block', margin: '6px auto' }} />}
 
       {/* 全量 all_in_one 渲染 */}
       {!loading && allInOneMode && allInOneData && (
@@ -135,7 +135,7 @@ export default function AbTestResultPage() {
             height: 2,
             background: "#fff",
             opacity: 0.11,
-            margin: "24px 0",
+            margin: "24px auto",
             borderRadius: 2
           }} />
           <AbTestTrendChartList
