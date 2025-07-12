@@ -1,3 +1,4 @@
+//AbTestResultPage.jsx
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Spin, message } from 'antd';
@@ -9,7 +10,7 @@ import AbTestTrendChartList from '../components/Item/TrendChart/AbTestTrendChart
 import { metricOptionsMap } from '../config/metricOptionsMap';
 
 // API方法
-import { fetchAllInOneBayesian } from '../api/abtestApi';
+import { fetchAllInOneBayesian } from '../api/AbtestApi';
 
 
 
@@ -106,7 +107,7 @@ export default function AbTestResultPage() {
         fontSize: 38,
         marginBottom: 32
       }}>
-        AB Test Results
+        FlowGPT AB Testing Results
       </h1>
 
       {/* 搜索表单 */}

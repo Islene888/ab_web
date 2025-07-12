@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchBayesian, fetchAllBayesian, fetchAllInOneBayesian } from '../../../api/abtestApi';
+import { fetchBayesian, fetchAllBayesian, fetchAllInOneBayesian } from '../../../api/AbtestApi';
 
 export function AbTestApiProcess({ mode = "single", ...props }) {
   const {

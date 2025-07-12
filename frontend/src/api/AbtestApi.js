@@ -1,4 +1,4 @@
-// src/api/abtestApi.js
+// src/api/AbtestApi.js
 
 export async function fetchBayesian({ experimentName, startDate, endDate, metric }) {
   const url = `/api/${metric}_bayesian?experiment_name=${encodeURIComponent(experimentName)}&start_date=${startDate}&end_date=${endDate}`;
@@ -16,7 +16,7 @@ export async function fetchAllBayesian({ experimentName, startDate, endDate, cat
 }
 
 
-// src/api/abtestApi.js
+// src/api/AbtestApi.js
 
 export async function fetchAllInOneBayesian({ experimentName, startDate, endDate }) { // 移除 category 参数
   const url = `/api/all_category_all_metrics?experiment_name=${encodeURIComponent(experimentName)}&start_date=${startDate}&end_date=${endDate}`;

@@ -1,15 +1,22 @@
 import numpy as np
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, text
-import os, urllib.parse
-
+import os
+import urllib.parse
+from backend.utils.cache_utils import get_abtest_cache, set_abtest_cache  # 你的缓存方法
 
 app = Flask(__name__)
 
 def get_db_connection():
+    # 远程数据仓库（主业务库）
     password = urllib.parse.quote_plus(os.environ.get('DB_PASSWORD', 'flowgpt@2024.com'))
     DATABASE_URL = f"mysql+pymysql://bigdata:{password}@3.135.224.186:9030/flow_ab_test?charset=utf8mb4"
     return create_engine(DATABASE_URL)
+
+def get_local_cache_engine():
+    password = urllib.parse.quote_plus(os.environ.get('LOCAL_DB_PASSWORD', 'Root2024!'))
+    LOCAL_DB_URL = f"mysql+pymysql://root:{password}@127.0.0.1:3306/ab_test?charset=utf8mb4"
+    return create_engine(LOCAL_DB_URL)
 
 def bayesian_summary(samples):
     samples = np.array(samples)
@@ -30,8 +37,27 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
     experiment_name = request.args.get('experiment_name')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    metric = request.args.get('metric', '')
+    category = request.args.get('category', '')
+    mode = request.args.get('mode', 'single')
     if not experiment_name or not start_date or not end_date:
         return jsonify({"error": "请提供 experiment_name, start_date, end_date 参数"}), 400
+
+    # 本地缓存引擎
+    cache_engine = get_local_cache_engine()
+    # 查询本地缓存
+    cache = get_abtest_cache(
+        cache_engine, query_type=mode,
+        experiment_name=experiment_name,
+        metric=metric or '',
+        category=category or '',
+        start_date=start_date,
+        end_date=end_date
+    )
+    if cache:
+        return jsonify(cache)
+
+    # 查主数据仓库
     engine = get_db_connection()
     rows = fetch_func(experiment_name, start_date, end_date, engine)
     print(f"实验 {experiment_name} 查询到 {len(rows)} 条记录")
@@ -60,14 +86,40 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
         summary["total_revenue"] = group_revenue[group]
         summary["total_order"] = group_order[group]
         result["groups"].append(summary)
+    # 存本地缓存
+    set_abtest_cache(
+        cache_engine, query_type=mode,
+        experiment_name=experiment_name,
+        metric=metric or '',
+        category=category or '',
+        start_date=start_date,
+        end_date=end_date,
+        result_json=result
+    )
     return jsonify(result)
 
 def generic_trend_api(fetch_func, value_field, revenue_field, order_field, variation_field=None, date_field=None):
     experiment_name = request.args.get('experiment_name')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    metric = request.args.get('metric', '')
+    category = request.args.get('category', '')
+    mode = 'trend'
     if not experiment_name or not start_date or not end_date:
         return "参数缺失", 400
+
+    cache_engine = get_local_cache_engine()
+    cache = get_abtest_cache(
+        cache_engine, query_type=mode,
+        experiment_name=experiment_name,
+        metric=metric or '',
+        category=category or '',
+        start_date=start_date,
+        end_date=end_date
+    )
+    if cache:
+        return jsonify(cache)
+
     engine = get_db_connection()
     rows = fetch_func(experiment_name, start_date, end_date, engine)
     from collections import defaultdict
@@ -98,10 +150,18 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
             "revenue": revenue,
             "order": order
         })
-    return jsonify({"dates": dates, "series": series})
+    result = {"dates": dates, "series": series}
+    set_abtest_cache(
+        cache_engine, query_type=mode,
+        experiment_name=experiment_name,
+        metric=metric or '',
+        category=category or '',
+        start_date=start_date,
+        end_date=end_date,
+        result_json=result
+    )
+    return jsonify(result)
 
-# 主函数自动注册所有指标接口
-# 只保留注册函数，不再包含指标列表和主入口
 def make_bayesian_api(cfg):
     def api_func():
         return generic_bayesian_api(cfg["fetch_func"], cfg["value_field"], cfg["revenue_field"], cfg["order_field"], cfg.get("variation_field"), cfg.get("date_field"))
