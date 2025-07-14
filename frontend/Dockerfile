@@ -23,4 +23,4 @@ COPY --from=build /app/build /usr/share/nginx/html
 EXPOSE 80
 
 # Command to start NGINX in the foreground
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["python", "-u", "-m", "backend.main"]
