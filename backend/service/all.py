@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
 from collections import defaultdict
-from backend.service.service import (
-    get_db_connection, bayesian_summary, get_local_cache_engine,
-    get_abtest_cache, set_abtest_cache
-)
 from backend.service.config import INDICATOR_CONFIG
 from functools import lru_cache
+
+from backend.service.service import bayesian_summary
+from backend.utils.cache_utils import get_abtest_cache, set_abtest_cache
+from backend.utils.engine_utils import get_local_cache_engine, get_db_connection
 
 all_bp = Blueprint("all", __name__)
 

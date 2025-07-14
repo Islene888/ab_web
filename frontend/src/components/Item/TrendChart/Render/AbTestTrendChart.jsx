@@ -30,7 +30,7 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, c
   if (loading) {
     return (
       <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: '#fff' }}>加载中...</span>
+        <span style={{ color: '#fff' }}>Loading...</span>
       </div>
     );
   }
