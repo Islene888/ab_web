@@ -23,7 +23,8 @@ from backend.sql_jobs.Business.subscribe_new import fetch_group_subscribe_new_sa
 from backend.sql_jobs.Business.AOV_new import fetch_group_AOV_new_samples
 from backend.sql_jobs.Business.payment_rate import fetch_group_payment_rate_samples
 from backend.sql_jobs.Business.payment_rate import fetch_group_payment_rate_samples
-
+from backend.sql_jobs.Retention.active_retention import fetch_active_user_retention
+from backend.sql_jobs.Retention.new_retention import fetch_new_user_retention
 INDICATOR_CONFIG = {
     # 1. 用户价值相关指标 8个
     "aov": {
@@ -227,6 +228,78 @@ INDICATOR_CONFIG = {
         "revenue_field": "total_regen",
         "order_field": "unique_regen_users",
         "category": "engagement"
+    },
+    # 4. 留存指标 8个（
+    "all_retention_d1": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_active_user_retention(experiment_name, start_date, end_date, engine, day=1),
+        "variation_field": "variation",         # 根据你的SQL返回的字段名设置
+        "date_field": "active_date",
+        "value_field": "d1_retention_rate",     # 字段名要和fetch返回dict一致
+        "revenue_field": "d1_retained_users",   # 这里用实际人数字段名
+        "order_field": "active_users",
+        "category": "retention"
+    },
+    "all_retention_d3": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_active_user_retention(experiment_name, start_date, end_date, engine, day=3),
+        "variation_field": "variation",
+        "date_field": "active_date",
+        "value_field": "d3_retention_rate",
+        "revenue_field": "d3_retained_users",
+        "order_field": "active_users",
+        "category": "retention"
+    },
+    "all_retention_d7": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_active_user_retention(experiment_name, start_date, end_date, engine, day=7),
+        "variation_field": "variation",
+        "date_field": "active_date",
+        "value_field": "d7_retention_rate",
+        "revenue_field": "d7_retained_users",
+        "order_field": "active_users",
+        "category": "retention"
+    },
+    "all_retention_d15": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_active_user_retention(experiment_name, start_date, end_date, engine, day=15),
+        "variation_field": "variation",
+        "date_field": "active_date",
+        "value_field": "d15_retention_rate",
+        "revenue_field": "d15_retained_users",
+        "order_field": "active_users",
+        "category": "retention"
+    },
+    "new_retention_d1": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_new_user_retention(experiment_name, start_date, end_date, engine, day=1),
+        "variation_field": "variation",
+        "date_field": "first_visit_date",
+        "value_field": "d1_retention_rate",
+        "revenue_field": "d1_retained_users",
+        "order_field": "new_users",
+        "category": "retention"
+    },
+    "new_retention_d3": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_new_user_retention(experiment_name, start_date, end_date, engine, day=3),
+        "variation_field": "variation",
+        "date_field": "first_visit_date",
+        "value_field": "d3_retention_rate",
+        "revenue_field": "d3_retained_users",
+        "order_field": "new_users",
+        "category": "retention"
+    },
+    "new_retention_d7": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_new_user_retention(experiment_name, start_date, end_date, engine, day=7),
+        "variation_field": "variation",
+        "date_field": "first_visit_date",
+        "value_field": "d7_retention_rate",
+        "revenue_field": "d7_retained_users",
+        "order_field": "new_users",
+        "category": "retention"
+    },
+    "new_retention_d15": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_new_user_retention(experiment_name, start_date, end_date, engine, day=15),
+        "variation_field": "variation",
+        "date_field": "first_visit_date",
+        "value_field": "d15_retention_rate",
+        "revenue_field": "d15_retained_users",
+        "order_field": "new_users",
+        "category": "retention"
     }
-    # 4. 其它指标同理，保持key与前端请求一致，字段用字符串名
 }

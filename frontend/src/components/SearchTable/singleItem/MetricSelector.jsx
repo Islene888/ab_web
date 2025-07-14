@@ -15,7 +15,6 @@ export default function MetricSelector({ category, value, onChange, metricOption
   const opts = metricOptionsMap[category] || [];
   return (
     <Select
-      mode="multiple"
       placeholder="Metric"
       value={value}
       onChange={onChange}

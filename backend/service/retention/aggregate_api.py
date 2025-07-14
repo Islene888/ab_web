@@ -1,9 +1,10 @@
-from flask import request, jsonify
-from backend.service.service import app, get_db_connection, bayesian_summary
+from flask import request, jsonify, Blueprint
+from backend.service.service import get_db_connection, bayesian_summary
 from backend.sql_jobs.Retention.active_retention import fetch_active_user_retention
 from backend.sql_jobs.Retention.new_retention import fetch_new_user_retention
 import numpy as np
-from datetime import datetime, timedelta
+
+retention_bp = Blueprint('retention', __name__)
 
 def get_retention_fetcher(user_type):
     if user_type == "new":
@@ -13,11 +14,7 @@ def get_retention_fetcher(user_type):
 
 def fetch_retention_d(engine, experiment_name, start_time, end_time, day, fetcher):
     rows = fetcher(engine, experiment_name, start_time, end_time)
-    # new_users, d1, d3, d7, d15 索引和 active_users, d1_users, ... 索引要统一
-    # day=1: d1, day=3: d3, ...
     if fetcher == fetch_new_user_retention:
-        # (date, variation, new_users, d1, d3, d7, d15, total_assigned)
-        # 0:date, 1:variation, 2:new_users, 3:d1, 4:d3, 5:d7, 6:d15, 7:total_assigned
         if day == 1:
             return [(row[1], row[0], row[3]/row[2] if row[2] else 0, row[2], row[3]) for row in rows]
         if day == 3:
@@ -27,7 +24,6 @@ def fetch_retention_d(engine, experiment_name, start_time, end_time, day, fetche
         if day == 15:
             return [(row[1], row[0], row[6]/row[2] if row[2] else 0, row[2], row[6]) for row in rows]
     else:
-        # (活跃用户留存的原结构)
         if day == 1:
             return [(row[1], row[0], row[7], row[2], row[3]) for row in rows]
         if day == 3:
@@ -39,7 +35,6 @@ def fetch_retention_d(engine, experiment_name, start_time, end_time, day, fetche
 
 def group_bayes(rows, user_idx=None, active_idx=None):
     from collections import defaultdict
-    # 仅在留存率类（传入user_idx和active_idx）时过滤掉分母>0但分子为0的天
     if user_idx is not None and active_idx is not None:
         filtered_rows = [row for row in rows if row[user_idx] > 0 and row[2] > 0]
     else:
@@ -48,7 +43,7 @@ def group_bayes(rows, user_idx=None, active_idx=None):
     group_users = defaultdict(int)
     group_active = defaultdict(int)
     for row in filtered_rows:
-        group_dict[row[0]].append(float(row[2]))  # 0: variation, 2: value_field
+        group_dict[row[0]].append(float(row[2]))
         if user_idx is not None and active_idx is not None:
             group_users[row[0]] += row[user_idx] if row[user_idx] is not None else 0
             group_active[row[0]] += row[active_idx] if row[active_idx] is not None else 0
@@ -56,14 +51,14 @@ def group_bayes(rows, user_idx=None, active_idx=None):
     for group, value_list in group_dict.items():
         summary = bayesian_summary(value_list)
         summary["group"] = group
-        summary["mean"] = float(np.mean(value_list))  # 算术平均
+        summary["mean"] = float(np.mean(value_list))
         if user_idx is not None and active_idx is not None:
             summary["numerator"] = group_users[group]
             summary["denominator"] = group_active[group]
         result.append(summary)
     return result
 
-@app.route('/api/all_retention_bayesian', methods=['GET'])
+@retention_bp.route('/api/all_retention_bayesian', methods=['GET'])
 def all_retention_bayesian():
     user_type = request.args.get('user_type', 'active')
     experiment_name = request.args.get('experiment_name')
@@ -85,7 +80,7 @@ def all_retention_bayesian():
     }
     return jsonify(result)
 
-@app.route('/api/all_retention_trend', methods=['GET'])
+@retention_bp.route('/api/all_retention_trend', methods=['GET'])
 def all_retention_trend():
     user_type = request.args.get('user_type', 'active')
     experiment_name = request.args.get('experiment_name')
@@ -132,7 +127,7 @@ def all_retention_trend():
         result[key] = {"dates": dates, "series": series}
     return jsonify(result)
 
-@app.route('/api/new_retention_bayesian', methods=['GET'])
+@retention_bp.route('/api/new_retention_bayesian', methods=['GET'])
 def new_retention_bayesian():
     experiment_name = request.args.get('experiment_name')
     start_date = request.args.get('start_date')
@@ -153,7 +148,7 @@ def new_retention_bayesian():
     }
     return jsonify(result)
 
-@app.route('/api/new_retention_trend', methods=['GET'])
+@retention_bp.route('/api/new_retention_trend', methods=['GET'])
 def new_retention_trend():
     experiment_name = request.args.get('experiment_name')
     start_date = request.args.get('start_date')

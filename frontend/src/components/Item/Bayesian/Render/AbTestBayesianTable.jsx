@@ -56,6 +56,7 @@ function getPercentTicks(min, max) {
   let ticks = [];
   for (let v = minPct; v <= maxPct; v += step) {
     ticks.push(v);
+     if (ticks.length >= 6) break;
   }
   return ticks;
 }
@@ -64,97 +65,113 @@ function genMockSamples(mean, std, n = 100) {
   return Array.from({ length: n }, () => mean + std * Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random()));
 }
 
-// 2. 可视化子组件 (从原文件移动至此)
-function ViolinPlot({ samples, mean, ticks, violinWidth = 100 }) {
-    if (!Array.isArray(samples) || samples.length < 2) return null;
-    if (!Array.isArray(ticks) || ticks.length < 2) return null;
-    
-    function quantile(arr, q) {
-        const sorted = [...arr].sort((a, b) => a - b);
-        const pos = (sorted.length - 1) * q;
-        const base = Math.floor(pos);
-        const rest = pos - base;
-        if (sorted[base + 1] !== undefined) {
-          return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
-        } else {
-          return sorted[base];
-        }
-    }
 
-    const ciLow = quantile(samples, 0.025);
-    const ciHigh = quantile(samples, 0.975);
-    const width = violinWidth;
-    const height = 25;
-    const tickMin = Math.min(...ticks) / 100;
-    const tickMax = Math.max(...ticks) / 100;
-    const tickRange = tickMax - tickMin || 1;
-    const scaleX = x => ((x - tickMin) / tickRange) * width;
-    const N = 200;
-    const xs = Array.from({ length: N }, (_, i) => ciLow + (ciHigh - ciLow) * i / (N - 1));
-    const m = mean ?? (samples.reduce((a, b) => a + b, 0) / samples.length);
-    const std = Math.sqrt(samples.reduce((a, b) => a + Math.pow(b - m, 2), 0) / samples.length);
-    const bandwidth = std * 0.4 || 1e-6;
-    const density = kde(samples, xs, bandwidth);
-    const maxDensity = Math.max(...density) || 1;
-    const scaleY = d => maxDensity === 0 ? 0 : (d / maxDensity) * (height / 2 * 0.9);
 
-    if(density.length > 0) {
-      density[0] = 0;
-      density[density.length - 1] = 0;
-    }
+// 2. 可视化子组件
+function ViolinPlot({ samples, mean, ticks, violinWidth = 100, height = 25 }) {
+  if (!Array.isArray(samples) || samples.length < 2) return null;
+  if (!Array.isArray(ticks) || ticks.length < 2) return null;
 
-    const zeroIndex = xs.findIndex(x => x >= 0);
-
-    function buildViolinPath(xs, density, scaleX, scaleY, height) {
-        if(xs.length === 0) return "";
-        let path = `M${scaleX(xs[0])},${height/2}`;
-        for (let i = 0; i < xs.length; ++i) {
-          path += ` L${scaleX(xs[i])},${height/2 - scaleY(density[i])}`;
-        }
-        path += ` L${scaleX(xs[xs.length-1])},${height/2}`;
-        for (let i = xs.length-1; i >= 0; --i) {
-          path += ` L${scaleX(xs[i])},${height/2 + scaleY(density[i])}`;
-        }
-        path += ` L${scaleX(xs[0])},${height/2} Z`;
-        return path;
-    }
-
-    let leftPath = null, rightPath = null;
-    const isAllPositive = ciLow >= 0;
-    const isAllNegative = ciHigh <= 0;
-    const mainColor = isAllPositive ? "#27ae60" : isAllNegative ? "#ff5c5c" : "#ff5c5c";
-    const fillColor = isAllPositive ? "#27ae60cc" : isAllNegative ? "#ff5c5ccc" : "#ff5c5ccc";
-    
-    if (!isAllPositive && !isAllNegative && zeroIndex > 0 && zeroIndex < xs.length-1) {
-        leftPath = buildViolinPath(xs.slice(0, zeroIndex+1), density.slice(0, zeroIndex+1), scaleX, scaleY, height);
-        rightPath = buildViolinPath(xs.slice(zeroIndex), density.slice(zeroIndex), scaleX, scaleY, height);
+  // 分位数
+  function quantile(arr, q) {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const pos = (sorted.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sorted[base + 1] !== undefined) {
+      return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
     } else {
-        leftPath = buildViolinPath(xs, density, scaleX, scaleY, height);
+      return sorted[base];
     }
+  }
 
-    const meanX = scaleX(mean ?? m);
-    const tickTextY = -25;
-    const tickLineY1 = -15;
-    const tickLineY2 = height + 35;
+  const ciLow = quantile(samples, 0.025);
+  const ciHigh = quantile(samples, 0.975);
+  const width = violinWidth;
+  const tickMin = Math.min(...ticks) / 100;
+  const tickMax = Math.max(...ticks) / 100;
+  const tickRange = tickMax - tickMin || 1;
+  const scaleX = x => ((x - tickMin) / tickRange) * width;
 
-    return (
-        <svg width={width} height={height + 35} viewBox={`0 -30 ${width} ${height + 60}`} style={{ overflow: "visible" }}>
-          {ticks.map((tick, i) => {
-            const x = scaleX(tick / 100);
-            return (
-              <g key={i}>
-                <text x={x} y={tickTextY} textAnchor="middle" fontSize={13} fontWeight={700} fill="#e6eaf7" style={{ userSelect: 'none' }}>{tick}%</text>
-                <line x1={x} x2={x} y1={tickLineY1} y2={tickLineY2} stroke="#e6eaf7" strokeWidth={1} opacity={0.4} />
-              </g>
-            );
-          })}
-          {leftPath && <path d={leftPath} fill={fillColor} stroke={mainColor} strokeWidth={2} />}
-          {rightPath && <path d={rightPath} fill="#27ae60cc" stroke="#27ae60" strokeWidth={2} />}
-          <line x1={meanX} x2={meanX} y1={height/2 - height/2 * 0.9} y2={height/2 + height/2 * 0.9} stroke="#fff" strokeWidth={2} opacity={1} />
-        </svg>
+  // KDE算法
+  function gaussianKernel(u) {
+    return Math.exp(-0.5 * u * u) / Math.sqrt(2 * Math.PI);
+  }
+  function kde(samples, xs, bandwidth) {
+    return xs.map(x =>
+      samples.reduce((sum, xi) => sum + gaussianKernel((x - xi) / bandwidth), 0) / (samples.length * bandwidth)
     );
-}
+  }
 
+  // 密度估计
+  const N = Math.max(80, Math.min(200, samples.length * 2));
+  const xs = Array.from({ length: N }, (_, i) => ciLow + (ciHigh - ciLow) * i / (N - 1));
+  const m = mean ?? (samples.reduce((a, b) => a + b, 0) / samples.length);
+  const std = Math.sqrt(samples.reduce((a, b) => a + Math.pow(b - m, 2), 0) / samples.length);
+  const bandwidth = 1.06 * std * Math.pow(samples.length, -1/5) || 1e-6;  // Silverman自适应带宽
+  const density = kde(samples, xs, bandwidth);
+  const maxDensity = Math.max(...density) || 1;
+  const scaleY = d => maxDensity === 0 ? 0 : (d / maxDensity) * (height / 2 * 0.9);
+
+  if (density.length > 0) {
+    density[0] = 0;
+    density[density.length - 1] = 0;
+  }
+
+  // 零点分割
+  const zeroIndex = xs.findIndex(x => x >= 0);
+
+  function buildViolinPath(xs, density, scaleX, scaleY, height) {
+    if (xs.length === 0) return "";
+    let path = `M${scaleX(xs[0])},${height / 2}`;
+    for (let i = 0; i < xs.length; ++i) {
+      path += ` L${scaleX(xs[i])},${height / 2 - scaleY(density[i])}`;
+    }
+    path += ` L${scaleX(xs[xs.length - 1])},${height / 2}`;
+    for (let i = xs.length - 1; i >= 0; --i) {
+      path += ` L${scaleX(xs[i])},${height / 2 + scaleY(density[i])}`;
+    }
+    path += ` L${scaleX(xs[0])},${height / 2} Z`;
+    return path;
+  }
+
+  // 区间配色
+  const isAllPositive = ciLow >= 0;
+  const isAllNegative = ciHigh <= 0;
+  const mainColor = isAllPositive ? "#27ae60" : isAllNegative ? "#ff5c5c" : "#ff5c5c";
+  const fillColor = isAllPositive ? "#27ae60cc" : isAllNegative ? "#ff5c5ccc" : "#ff5c5ccc";
+
+  let leftPath = null, rightPath = null;
+  if (!isAllPositive && !isAllNegative && zeroIndex > 0 && zeroIndex < xs.length - 1) {
+    leftPath = buildViolinPath(xs.slice(0, zeroIndex + 1), density.slice(0, zeroIndex + 1), scaleX, scaleY, height);
+    rightPath = buildViolinPath(xs.slice(zeroIndex), density.slice(zeroIndex), scaleX, scaleY, height);
+  } else {
+    leftPath = buildViolinPath(xs, density, scaleX, scaleY, height);
+  }
+
+  // 均值线
+  const meanX = scaleX(mean ?? m);
+  const tickTextY = -25;
+  const tickLineY1 = -25;
+  const tickLineY2 = height + 35;
+
+  return (
+    <svg width={width} height={height + 40} viewBox={`0 -15 ${width} ${height + 50}`} style={{ overflow: "visible" }}>
+      {ticks.map((tick, i) => {
+        const x = scaleX(tick / 100);
+        return (
+          <g key={i}>
+            <text x={x} y={tickTextY} textAnchor="middle" fontSize={13} fontWeight={700} fill="#e6eaf7" style={{ userSelect: 'none' }}>{tick}%</text>
+            <line x1={x} x2={x} y1={tickLineY1} y2={tickLineY2} stroke="#e6eaf7" strokeWidth={1} opacity={0.4} />
+          </g>
+        );
+      })}
+      {leftPath && <path d={leftPath} fill={fillColor} stroke={mainColor} strokeWidth={2} />}
+      {rightPath && <path d={rightPath} fill="#27ae60cc" stroke="#27ae60" strokeWidth={2} />}
+      <line x1={meanX} x2={meanX} y1={height / 2 - height / 2 * 0.9} y2={height / 2 + height / 2 * 0.9} stroke="#fff" strokeWidth={2} opacity={1} />
+    </svg>
+  );
+}
 
 // 3. 主展示组件
 export default function AbTestBayesianTable({ metric, data: groups }) {
@@ -172,7 +189,7 @@ export default function AbTestBayesianTable({ metric, data: groups }) {
     typeof n === "number" && !isNaN(n)
       ? n.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 })
       : n === 0 ? "0" : "-";
-  const violinWidth = 100;
+  const violinWidth = 160;
   
   // --- 数据处理 ---
   if (!groups || groups.length < 2) {
@@ -239,7 +256,7 @@ export default function AbTestBayesianTable({ metric, data: groups }) {
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Baseline</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Variation</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 140, borderRight: `2px solid ${border}` }}>Chance to Win</th>
-            <th style={{ textAlign: "center", minWidth: 260, borderRight: `2px solid ${border}` }}>% Change Distribution</th>
+            <th style={{ textAlign: "center", minWidth: 260, borderRight: `2px solid ${border}` }}></th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 120, borderRight: `2px solid ${border}` }}>% Change</th>
             <th style={{ textAlign: "left", paddingLeft: 8, minWidth: 120 }}>Result</th>
           </tr>
@@ -249,7 +266,7 @@ export default function AbTestBayesianTable({ metric, data: groups }) {
             const ticks = getPercentTicks(row.violinData.ciLow, row.violinData.ciHigh);
             return (
               <tr key={row.key} style={{ borderBottom: idx === tableData.length - 1 ? "none" : `2px solid ${border}`, height: 68 }}>
-                <td style={{ textAlign: "left", color: mainFont, fontWeight: 700, fontSize: 18, padding: "22px 0 22px 32px", verticalAlign: "top", borderRight: `2px solid ${border}` }}>
+                <td style={{ textAlign: "left", color: mainFont, fontWeight: 700, fontSize: 18, padding: "22px 0 22px 15px", verticalAlign: "top", borderRight: `2px solid ${border}` }}>
                   {row.name}
                 </td>
                 <td style={{ textAlign: "left", verticalAlign: "middle", paddingLeft: 8, borderRight: `2px solid ${border}` }}>
@@ -272,12 +289,15 @@ export default function AbTestBayesianTable({ metric, data: groups }) {
                   )}
                 </td>
                 <td style={{ textAlign: "center", verticalAlign: "middle", padding: 0, borderRight: `2px solid ${border}` }}>
-                  {row.violinData.samples.length > 1 ? (
-                    <ViolinPlot samples={row.violinData.samples} mean={row.violinData.mean} ticks={ticks} violinWidth={violinWidth} />
-                  ) : (
-                    <span style={{ color: gray, fontStyle: "italic" }}>无置信区间数据</span>
-                  )}
+                  <div style={{ height: 65, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {row.violinData.samples.length > 1 ? (
+                      <ViolinPlot samples={row.violinData.samples} mean={row.violinData.mean} ticks={ticks} violinWidth={180} />
+                    ) : (
+                      <span style={{ color: gray, fontStyle: "italic" }}>无置信区间数据</span>
+                    )}
+                  </div>
                 </td>
+
                 <td style={{ textAlign: "left", verticalAlign: "middle", paddingLeft: 8, fontWeight: 900, fontSize: 18, borderRight: `2px solid ${border}` }}>
                   {row.pctChange !== null && (
                     <span style={{ color: row.pctChange < 0 ? red : green, display: "flex", alignItems: "center", gap: 2 }}>

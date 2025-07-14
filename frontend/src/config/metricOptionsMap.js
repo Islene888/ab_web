@@ -29,8 +29,15 @@ export const metricOptionsMap = {
     { value: 'new_conversation', label: 'New Conversation' },
     { value: 'regen', label: 'Regen' },
   ],
-  retention: [
-    { value: 'all_retention', label: 'All Retention' },
-    { value: 'new_retention', label: 'New Retention' },
-  ]
-};
+retention: [
+  { value: 'all_retention_d1', label: 'Active User Day 1 Retention' },
+  { value: 'all_retention_d3', label: 'Active User Day 3 Retention' },
+  { value: 'all_retention_d7', label: 'Active User Day 7 Retention' },
+  { value: 'all_retention_d15', label: 'Active User Day 15 Retention' },
+  { value: 'new_retention_d1', label: 'New User Day 1 Retention' },
+  { value: 'new_retention_d3', label: 'New User Day 3 Retention' },
+  { value: 'new_retention_d7', label: 'New User Day 7 Retention' },
+  { value: 'new_retention_d15', label: 'New User Day 15 Retention' },
+]};
+
+

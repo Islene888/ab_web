@@ -1,3 +1,5 @@
+//AbTestApiProcess.jsx
+
 import React, { useState, useEffect } from 'react';
 import { fetchBayesian, fetchAllBayesian, fetchAllInOneBayesian } from '../../../api/AbtestApi';
 
@@ -29,8 +31,9 @@ export function AbTestApiProcess({ mode = "single", ...props }) {
     } else if (mode === "all_in_one") {
       fetchPromise = fetchAllInOneBayesian({ experimentName, startDate, endDate });
     } else {
-      fetchPromise = fetchBayesian({ experimentName, startDate, endDate, metric });
+      fetchPromise = fetchBayesian({ experimentName, startDate, endDate, metric, category });
     }
+
 
     fetchPromise
       .then(setData)

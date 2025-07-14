@@ -99,6 +99,7 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
     return jsonify(result)
 
 def generic_trend_api(fetch_func, value_field, revenue_field, order_field, variation_field=None, date_field=None):
+    from backend.service.config import INDICATOR_CONFIG  # 自动查 category
     experiment_name = request.args.get('experiment_name')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
@@ -108,12 +109,18 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
     if not experiment_name or not start_date or not end_date:
         return "参数缺失", 400
 
+    # ----------- 自动兜底补 category ----------
+    if not category and metric:
+        # config 里查当前 metric 的 category（如 business/retention/chat/...）
+        category = INDICATOR_CONFIG.get(metric, {}).get("category", "")
+    # ------------------------------------------
+
     cache_engine = get_local_cache_engine()
     cache = get_abtest_cache(
         cache_engine, query_type=mode,
         experiment_name=experiment_name,
         metric=metric or '',
-        category=category or '',
+        category=category or '',  # 保证总是有category
         start_date=start_date,
         end_date=end_date
     )
@@ -155,12 +162,13 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
         cache_engine, query_type=mode,
         experiment_name=experiment_name,
         metric=metric or '',
-        category=category or '',
+        category=category or '',   # 关键点
         start_date=start_date,
         end_date=end_date,
         result_json=result
     )
     return jsonify(result)
+
 
 def make_bayesian_api(cfg):
     def api_func():
