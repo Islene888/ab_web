@@ -3,8 +3,9 @@ from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, text
 import os
 import urllib.parse
-from backend.utils.cache_utils import get_abtest_cache, set_abtest_cache  # 你的缓存方法
-from backend.utils.engine_utils import get_local_cache_engine, get_db_connection
+
+from ..utils.cache_utils import get_abtest_cache, set_abtest_cache
+from ..utils.engine_utils import get_local_cache_engine, get_db_connection
 
 app = Flask(__name__)
 

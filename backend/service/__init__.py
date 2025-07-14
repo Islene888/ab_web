@@ -1,1 +1,2 @@
-from backend.service.service import register_indicator_routes
+# in /backend/service/__init__.py
+from .service import register_indicator_routes

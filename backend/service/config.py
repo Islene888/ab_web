@@ -1,30 +1,27 @@
-from backend.sql_jobs.Business.aov_sql import fetch_group_aov_samples
-from backend.sql_jobs.Business.arpu_sql import fetch_group_arpu_samples
-from backend.sql_jobs.Business.arppu_sql import fetch_group_arppu_samples
-from backend.sql_jobs.Business.payment_rate_all_sql import fetch_group_payment_rate_all_samples
-from backend.sql_jobs.Business.payment_rate_new_sql import fetch_group_payment_rate_new_samples
-from backend.sql_jobs.chat_behavior.click_ratio_sql import fetch_group_click_ratio_samples
-from backend.sql_jobs.chat_behavior.explore_chat_start_rate import fetch_group_explore_chat_start_rate_samples
-from backend.sql_jobs.chat_behavior.avg_bot_click import fetch_group_avg_bot_click_samples
-from backend.sql_jobs.chat_behavior.first_chat_bot import fetch_group_explore_chat_start_rate_samples as fetch_group_first_chat_bot_samples
-from backend.sql_jobs.chat_behavior.show_click_rate import fetch_group_explore_chat_start_rate_samples as fetch_group_show_click_rate_samples
-from backend.sql_jobs.chat_behavior.Chat_round import fetch_group_chat_round_samples
-from backend.sql_jobs.chat_behavior.time_spend import fetch_group_time_spend_samples
-from backend.sql_jobs.chat_behavior.explore_click_rate import fetch_group_explore_click_rate_samples
-from backend.sql_jobs.chat_behavior.explore_chat_round import fetch_group_explore_chat_round_samples
-from backend.sql_jobs.Engagement.Continue import fetch_group_continue_samples
-from backend.sql_jobs.Engagement.Conversation_Reset import fetch_group_conversation_reset_samples
-from backend.sql_jobs.Engagement.Edit import fetch_group_edit_samples
-from backend.sql_jobs.Engagement.Follow import fetch_group_follow_samples
-from backend.sql_jobs.Engagement.New_Conversation import fetch_group_new_conversation_samples
-from backend.sql_jobs.Engagement.Regen import fetch_group_regen_samples
-from backend.sql_jobs.Business.cancel_sub import fetch_group_cancel_sub_samples
-from backend.sql_jobs.Business.subscribe_new import fetch_group_subscribe_new_samples
-from backend.sql_jobs.Business.AOV_new import fetch_group_AOV_new_samples
-from backend.sql_jobs.Business.payment_rate import fetch_group_payment_rate_samples
-from backend.sql_jobs.Business.payment_rate import fetch_group_payment_rate_samples
-from backend.sql_jobs.Retention.active_retention import fetch_active_user_retention
-from backend.sql_jobs.Retention.new_retention import fetch_new_user_retention
+from ..sql_jobs.Business.aov_sql import fetch_group_aov_samples
+from ..sql_jobs.Business.arpu_sql import fetch_group_arpu_samples
+from ..sql_jobs.Business.arppu_sql import fetch_group_arppu_samples
+from ..sql_jobs.Business.payment_rate_all_sql import fetch_group_payment_rate_all_samples
+from ..sql_jobs.Business.payment_rate_new_sql import fetch_group_payment_rate_new_samples
+from ..sql_jobs.chat_behavior.click_ratio_sql import fetch_group_click_ratio_samples
+from ..sql_jobs.chat_behavior.explore_chat_start_rate import fetch_group_explore_chat_start_rate_samples
+from ..sql_jobs.chat_behavior.avg_bot_click import fetch_group_avg_bot_click_samples
+from ..sql_jobs.chat_behavior.first_chat_bot import fetch_group_explore_chat_start_rate_samples as fetch_group_first_chat_bot_samples
+from ..sql_jobs.chat_behavior.Chat_round import fetch_group_chat_round_samples
+from ..sql_jobs.chat_behavior.time_spend import fetch_group_time_spend_samples
+from ..sql_jobs.chat_behavior.explore_click_rate import fetch_group_explore_click_rate_samples
+from ..sql_jobs.chat_behavior.explore_chat_round import fetch_group_explore_chat_round_samples
+from ..sql_jobs.Engagement.Continue import fetch_group_continue_samples
+from ..sql_jobs.Engagement.Conversation_Reset import fetch_group_conversation_reset_samples
+from ..sql_jobs.Engagement.Edit import fetch_group_edit_samples
+from ..sql_jobs.Engagement.Follow import fetch_group_follow_samples
+from ..sql_jobs.Engagement.New_Conversation import fetch_group_new_conversation_samples
+from ..sql_jobs.Engagement.Regen import fetch_group_regen_samples
+from ..sql_jobs.Business.cancel_sub import fetch_group_cancel_sub_samples
+from ..sql_jobs.Business.subscribe_new import fetch_group_subscribe_new_samples
+from ..sql_jobs.Business.AOV_new import fetch_group_AOV_new_samples
+from ..sql_jobs.Retention.active_retention import fetch_active_user_retention
+from ..sql_jobs.Retention.new_retention import fetch_new_user_retention
 INDICATOR_CONFIG = {
     # 1. 用户价值相关指标 8个
     "aov": {
