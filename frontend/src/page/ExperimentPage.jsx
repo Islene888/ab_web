@@ -254,7 +254,7 @@ export default function ExperimentPage() {
             userSelect: "none",
           }}
         >
-          Experiment Phase Overview
+          FlowGpt Experiment List
         </h1>
         <Table
           rowKey={(row) =>

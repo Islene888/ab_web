@@ -1,6 +1,8 @@
+// src/components/SearchTable/SearchForm.jsx
+
 import React, { useEffect, useState } from 'react';
 import { Form, Button, Spin, Select } from 'antd';
-import dayjs from 'dayjs';
+import dayjs from 'dayjs'; // 确保 dayjs 已导入
 import ExperimentSelector from './singleItem/ExperimentSelector';
 import PhaseSelector from './singleItem/PhaseSelector';
 import DateRangePicker from './singleItem/DateRangePicker';
@@ -15,7 +17,7 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
   const [experiments, setExperiments] = useState([]);
   const [phaseOptions, setPhaseOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('business');  // 新增状态
+  const [category, setCategory] = useState('business');
 
   useEffect(() => {
     fetchExperiments().then(list => {
@@ -36,12 +38,13 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
           phase: ph.value,
           daterange: [
             ph.dateStarted ? dayjs(ph.dateStarted) : null,
-            ph.dateEnded ? dayjs(ph.dateEnded) : null
+            // ✅ 修改点 1: 初始加载时，如果结束日期为空，则设为当天
+            ph.dateEnded ? dayjs(ph.dateEnded) : dayjs()
           ],
           category: 'business',
           metric: []
         });
-        setCategory('business'); // 保证状态同步
+        setCategory('business');
       }
     });
   }, [initialExperiment, initialPhaseIdx, form]);
@@ -56,11 +59,13 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
       label: `${p.name || `Phase ${i + 1}`} (${p.dateStarted.split('T')[0]}~${p.dateEnded ? p.dateEnded.split('T')[0] : 'now'})`
     }));
     setPhaseOptions(opts);
+    const firstPhase = opts[0]; // 取第一个阶段作为默认值
     form.setFieldsValue({
-      phase: opts[0].value,
+      phase: firstPhase.value,
       daterange: [
-        opts[0].dateStarted ? dayjs(opts[0].dateStarted) : null,
-        opts[0].dateEnded ? dayjs(opts[0].dateEnded) : null
+        firstPhase.dateStarted ? dayjs(firstPhase.dateStarted) : null,
+        // ✅ 修改点 2: 切换实验时，如果结束日期为空，则设为当天
+        firstPhase.dateEnded ? dayjs(firstPhase.dateEnded) : dayjs()
       ]
     });
   };
@@ -72,23 +77,24 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
     form.setFieldsValue({
       daterange: [
         p.dateStarted ? dayjs(p.dateStarted) : null,
-        p.dateEnded ? dayjs(p.dateEnded) : null
+        // ✅ 修改点 3: 切换阶段时，如果结束日期为空，则设为当天
+        p.dateEnded ? dayjs(p.dateEnded) : dayjs()
       ]
     });
   };
 
   // 切换分区
   const handleCategoryChange = val => {
-    setCategory(val);  // 这里更新状态，触发 MetricSelector 重新渲染
-    form.setFieldsValue({ metric: [] });  // 指标清空
+    setCategory(val);
+    form.setFieldsValue({ metric: [] });
   };
 
-  // All Search 按钮事件，自动填充 all（你可自定义逻辑）
+  // All Search 按钮事件
   const handleAllSearch = () => {
     const values = form.getFieldsValue();
     onAllSearch && onAllSearch({
       ...values,
-      metric: ['all']
+      metric: ['all'] // 这个可以根据你的逻辑自定义
     });
   };
 

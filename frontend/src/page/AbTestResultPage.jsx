@@ -130,7 +130,7 @@ export default function AbTestResultPage() {
         fontSize: 38,
         marginBottom: 50
       }}>
-        FlowGPT  AB  Testing  Results
+        FlowGPT  A/B  Experiment  Platform
       </h1>
 
       {/* 搜索表单 */}
