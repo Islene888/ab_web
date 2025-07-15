@@ -7,7 +7,6 @@ from backend.growthbook_fetch.experiment_data import bp as growthbook_bp
 
 app = Flask(__name__)
 
-# === 全局请求日志（务必加在注册 blueprint 前面也没事） ===
 @app.before_request
 def log_request_info():
     print(f"[全局请求] {request.method} {request.path} args={dict(request.args)}", flush=True)
