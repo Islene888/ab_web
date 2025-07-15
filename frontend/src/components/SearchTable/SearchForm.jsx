@@ -38,8 +38,8 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
           phase: ph.value,
           daterange: [
             ph.dateStarted ? dayjs(ph.dateStarted) : null,
-            // ✅ 修改点 1: 初始加载时，如果结束日期为空，则设为当天
-            ph.dateEnded ? dayjs(ph.dateEnded) : dayjs()
+            // ✅ 修改点 1: 增加对字符串 'now' 的判断
+            (ph.dateEnded && ph.dateEnded !== 'now') ? dayjs(ph.dateEnded) : dayjs()
           ],
           category: 'business',
           metric: []
@@ -64,8 +64,8 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
       phase: firstPhase.value,
       daterange: [
         firstPhase.dateStarted ? dayjs(firstPhase.dateStarted) : null,
-        // ✅ 修改点 2: 切换实验时，如果结束日期为空，则设为当天
-        firstPhase.dateEnded ? dayjs(firstPhase.dateEnded) : dayjs()
+        // ✅ 修改点 2: 增加对字符串 'now' 的判断
+        (firstPhase.dateEnded && firstPhase.dateEnded !== 'now') ? dayjs(firstPhase.dateEnded) : dayjs()
       ]
     });
   };
@@ -77,8 +77,8 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
     form.setFieldsValue({
       daterange: [
         p.dateStarted ? dayjs(p.dateStarted) : null,
-        // ✅ 修改点 3: 切换阶段时，如果结束日期为空，则设为当天
-        p.dateEnded ? dayjs(p.dateEnded) : dayjs()
+        // ✅ 修改点 3: 增加对字符串 'now' 的判断
+        (p.dateEnded && p.dateEnded !== 'now') ? dayjs(p.dateEnded) : dayjs()
       ]
     });
   };
@@ -94,7 +94,7 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
     const values = form.getFieldsValue();
     onAllSearch && onAllSearch({
       ...values,
-      metric: ['all'] // 这个可以根据你的逻辑自定义
+      metric: ['all']
     });
   };
 
