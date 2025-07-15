@@ -1,26 +1,22 @@
-//AbTestResultPage.jsx
+// src/pages/AbTestResultPage.jsx
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Spin, message } from 'antd';
 import SearchForm from '../components/SearchTable/SearchForm';
 import { AbTestApiProcess } from '../components/Item/Bayesian/AbTestApiProcess';
 import { AbTestBayesianList } from '../components/Item/Bayesian/AbTestBayesianList';
-import { AbTestTrendChart }  from '../components/Item/TrendChart/Render/AbTestTrendChart';
+import { AbTestTrendChart } from '../components/Item/TrendChart/Render/AbTestTrendChart';
 import AbTestTrendChartList from '../components/Item/TrendChart/AbTestTrendChartList';
 import { metricOptionsMap } from '../config/metricOptionsMap';
-
-// API方法
 import { fetchAllInOneBayesian } from '../api/AbtestApi';
-
-
 
 export default function AbTestResultPage() {
   const [params, setParams] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [allInOneMode, setAllInOneMode] = useState(false); // 全量模式标记
-  const [allInOneData, setAllInOneData] = useState(null);  // 全量数据缓存
+  const [allInOneMode, setAllInOneMode] = useState(false);
+  const [allInOneData, setAllInOneData] = useState(null);
+  const [allTrendData, setAllTrendData] = useState(null); // ★ 新增全量趋势数据
   const [searchParams] = useSearchParams();
-
 
   const initialValues = useMemo(() => ({
     experiment: searchParams.get('experiment') || '',
@@ -31,27 +27,30 @@ export default function AbTestResultPage() {
   const handleSearch = async (values) => {
     setAllInOneMode(false);
     setAllInOneData(null);
+
     if (!values.daterange || values.daterange.length < 2) {
       message.error('请选择完整的日期区间');
       return;
     }
     setLoading(true);
 
+    // --- 修改开始 ---
     let mode = 'single';
     let metricForApi = values.metric;
     let metricsForTrend = [];
 
-    if (Array.isArray(values.metric) && values.metric.includes('all')) {
+    // 修正后的逻辑块
+    if (values.metric === 'all') { // ✅ 修正：直接判断字符串是否为 'all'
       mode = 'all';
-      metricForApi = 'all';
+      metricForApi = 'all'; // 这行没问题，但关键是 `mode` 的正确设置
       metricsForTrend = (metricOptionsMap[values.category] || []).map(m => m.value);
-    } else if (Array.isArray(values.metric) && values.metric.length > 0) {
-      metricForApi = values.metric[0];
-      metricsForTrend = [values.metric[0]];
-    } else if (!Array.isArray(values.metric)) {
-      metricForApi = values.metric;
-      metricsForTrend = [values.metric];
+    } else {
+      // 这个 else 分支可以同时处理单指标（字符串）和未来可能的多选（数组）情况
+      const selectedMetrics = Array.isArray(values.metric) ? values.metric : [values.metric];
+      metricForApi = selectedMetrics[0]; // 对于单指标模式的 API，只取第一个
+      metricsForTrend = selectedMetrics;
     }
+    // --- 修改结束 ---
 
     setParams({
       experimentName: values.experimentName,
@@ -59,9 +58,22 @@ export default function AbTestResultPage() {
       endDate: values.daterange[1].format('YYYY-MM-DD'),
       category: values.category,
       metric: metricForApi,
-      mode: mode,
+      mode: mode, // `mode` 会被正确地设置为 'all'
       metricsForTrend,
     });
+
+    // ★ 主动拉取全量趋势数据
+    if (mode === 'all') {
+      try {
+        const res = await fetch(`/api/all_trend?experiment_name=${values.experimentName}&start_date=${values.daterange[0].format('YYYY-MM-DD')}&end_date=${values.daterange[1].format('YYYY-MM-DD')}&metric=all&category=${values.category}`);
+        const trendData = await res.json();
+        setAllTrendData(trendData);
+      } catch (e) {
+        setAllTrendData(null);
+      }
+    } else {
+      setAllTrendData(null);
+    }
 
     setLoading(false);
   };
@@ -70,6 +82,7 @@ export default function AbTestResultPage() {
   const handleAllSearch = async (values) => {
     setAllInOneMode(false);
     setAllInOneData(null);
+
     if (!values.daterange || values.daterange.length < 2) {
       message.error('请选择完整的日期区间');
       return;
@@ -84,13 +97,23 @@ export default function AbTestResultPage() {
       });
       setAllInOneData(data);
       setAllInOneMode(true);
-      // params 用于趋势图等的 experimentName/startDate/endDate
+
       setParams({
         experimentName: values.experimentName,
         startDate: values.daterange[0].format('YYYY-MM-DD'),
         endDate: values.daterange[1].format('YYYY-MM-DD'),
         metricsForTrend: Object.keys(data || {}),
+        category: values.category, // all_in_one 也要带 category
       });
+
+      // ★ 主动拉取全量趋势数据
+      try {
+        const res = await fetch(`/api/all_trend?experiment_name=${values.experimentName}&start_date=${values.daterange[0].format('YYYY-MM-DD')}&end_date=${values.daterange[1].format('YYYY-MM-DD')}&metric=all&category=${values.category}`);
+        const trendData = await res.json();
+        setAllTrendData(trendData);
+      } catch {
+        setAllTrendData(null);
+      }
     } catch (e) {
       message.error('All in one 查询失败: ' + e.message);
     } finally {
@@ -143,6 +166,8 @@ export default function AbTestResultPage() {
             startDate={params?.startDate}
             endDate={params?.endDate}
             metrics={params?.metricsForTrend || Object.keys(allInOneData)}
+            category={params?.category}
+            trendData={allTrendData}
           />
         </>
       )}
@@ -187,6 +212,8 @@ export default function AbTestResultPage() {
                 startDate={params.startDate}
                 endDate={params.endDate}
                 metrics={params.metricsForTrend}
+                category={params.category}
+                trendData={allTrendData}
               />
             ) : (
               <AbTestTrendChart
@@ -194,6 +221,7 @@ export default function AbTestResultPage() {
                 startDate={params.startDate}
                 endDate={params.endDate}
                 metric={Array.isArray(params.metric) ? params.metric[0] : params.metric}
+                category={params.category}
               />
             )}
           </div>

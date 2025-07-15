@@ -69,7 +69,7 @@ INDICATOR_CONFIG = {
         "order_field": 2,
         "category": "business"
     },
-    "AOV_new_day": {
+    "aov_new_day": {
         "fetch_func": fetch_group_AOV_new_samples,
         "variation_field": "variation_id",
         "date_field": "event_date",

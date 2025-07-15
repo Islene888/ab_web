@@ -1,57 +1,78 @@
 import React, { useState, useEffect } from 'react';
+import { Spin } from 'antd';
 import ReactECharts from 'echarts-for-react';
 
-export function AbTestTrendChart({ experimentName, startDate, endDate, metric, category, userType }) {
-  const [trend, setTrend] = useState(null);
+/**
+ * 单个指标趋势图组件
+ * 支持 trend 作为 props 传入，优先渲染 trend，不再自动 fetch
+ */
+export function AbTestTrendChart({
+  experimentName,
+  startDate,
+  endDate,
+  metric,
+  category,
+  userType,
+  trend, // 支持父组件直接传聚合数据
+}) {
+  const [trendData, setTrendData] = useState(trend || null);
   const [loading, setLoading] = useState(false);
 
-  // 配色表，多实验组自动分配不同颜色
-  const colorList = [
-    "#3B6FF5", "#FF9900", "#20C997", "#E34F4F", "#6F42C1",
-    "#FFA500", "#0099CC", "#FF66CC", "#FFC300", "#4A90E2"
-  ];
-
   useEffect(() => {
+    // trend 作为 props 传入时直接渲染，不再发请求
+    if (trend) {
+      setTrendData(trend);
+      setLoading(false);
+      return;
+    }
     if (!experimentName || !startDate || !endDate || !metric) {
-      setTrend(null);
+      setTrendData(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
-    setTrend(null); // 清空残影
+    setTrendData(null);
+
     const userTypeParam = userType ? `&user_type=${userType}` : '';
     const categoryParam = category ? `&category=${category}` : '';
-    fetch(`/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}${userTypeParam}&metric=${metric}${categoryParam}`)
+    const url = `/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}&metric=${metric}${userTypeParam}${categoryParam}`;
+    fetch(url)
       .then(res => res.json())
-      .then(res => setTrend(res))
-      .catch(() => setTrend(null))
+      .then(res => setTrendData(res))
+      .catch(() => setTrendData(null))
       .finally(() => setLoading(false));
-  }, [experimentName, startDate, endDate, metric, category, userType]);
+  }, [experimentName, startDate, endDate, metric, category, userType, trend]);
 
+  // 加载中
   if (loading) {
     return (
       <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: '#fff' }}>Loading...</span>
+        <Spin size="large" />
       </div>
     );
   }
 
-  if (!trend || !trend.dates || !trend.series) {
+  // 无数据
+  if (!trendData || !trendData.dates || !trendData.series) {
     return (
-      <div style={{color:'#fff',textAlign:'center',padding:32}}>暂无有效趋势数据</div>
+      <div style={{ color: '#fff', textAlign: 'center', padding: 32 }}>暂无有效趋势数据</div>
     );
   }
 
-  const filteredSeries = trend.series.filter(s =>
+  // 只渲染有「任意大于0」数据的series（全0/null/负不渲染）
+  const filteredSeries = trendData.series.filter(s =>
     Array.isArray(s.data) && s.data.some(v => typeof v === 'number' && v > 0)
   );
-  const filteredDates = trend.dates;
+  const filteredDates = trendData.dates;
 
+  // 计算所有线的数据的最小/最大
   const allData = filteredSeries.flatMap(s => s.data).filter(v => typeof v === 'number' && !isNaN(v));
   let minData = Math.min(...allData);
   let maxData = Math.max(...allData);
 
+  // 全部一样/只有一个点：上下浮动10%
   if (allData.length === 0 || isNaN(minData) || isNaN(maxData)) {
-    return <div style={{color:'#fff',textAlign:'center',padding:32}}>暂无有效趋势数据</div>;
+    return <div style={{ color: '#fff', textAlign: 'center', padding: 32 }}>暂无有效趋势数据</div>;
   }
   if (minData === maxData) {
     minData = minData * 0.95;
@@ -62,11 +83,16 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, c
     maxData = maxData + padding;
   }
   if (Math.abs(maxData) < 1e-6 && Math.abs(minData) < 1e-6) {
-    return <div style={{color:'#fff',textAlign:'center',padding:32}}>暂无有效趋势数据</div>;
+    return <div style={{ color: '#fff', textAlign: 'center', padding: 32 }}>暂无有效趋势数据</div>;
   }
 
-  // 颜色和legend自动匹配
+  // 配色风格
+  const colorList = [
+    "#3B6FF5", "#FF9900", "#20C997", "#E34F4F", "#6F42C1",
+    "#FFA500", "#0099CC", "#FF66CC", "#FFC300", "#4A90E2"
+  ];
   const legendData = filteredSeries.map(s => s.variation || s.name || "Group");
+
   return (
     <div style={{
       background: "#23243a",

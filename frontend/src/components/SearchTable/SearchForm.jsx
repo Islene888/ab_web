@@ -5,7 +5,7 @@ import ExperimentSelector from './singleItem/ExperimentSelector';
 import PhaseSelector from './singleItem/PhaseSelector';
 import DateRangePicker from './singleItem/DateRangePicker';
 import MetricSelector from './singleItem/MetricSelector';
-import {  metricOptionsMap } from '../../config/metricOptionsMap';
+import { metricOptionsMap } from '../../config/metricOptionsMap';
 import { fetchExperiments } from '../../api/GrowthbookApi';
 
 const { Option } = Select;
@@ -15,7 +15,7 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
   const [experiments, setExperiments] = useState([]);
   const [phaseOptions, setPhaseOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('business');
+  const [category, setCategory] = useState('business');  // 新增状态
 
   useEffect(() => {
     fetchExperiments().then(list => {
@@ -41,6 +41,7 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
           category: 'business',
           metric: []
         });
+        setCategory('business'); // 保证状态同步
       }
     });
   }, [initialExperiment, initialPhaseIdx, form]);
@@ -78,23 +79,24 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
 
   // 切换分区
   const handleCategoryChange = val => {
-    setCategory(val);
-    form.setFieldsValue({ metric: [] });
+    setCategory(val);  // 这里更新状态，触发 MetricSelector 重新渲染
+    form.setFieldsValue({ metric: [] });  // 指标清空
   };
 
   // All Search 按钮事件，自动填充 all（你可自定义逻辑）
   const handleAllSearch = () => {
     const values = form.getFieldsValue();
-    // 设为全量搜索，比如 metric = ['all'] 或类似逻辑
     onAllSearch && onAllSearch({
       ...values,
       metric: ['all']
     });
   };
 
-  return loading ? (
-    <Spin />
-  ) : (
+  if (loading) {
+    return <Spin />;
+  }
+
+  return (
     <Form
       form={form}
       layout="inline"
@@ -104,12 +106,15 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
       <Form.Item name="experimentName" rules={[{ required: true }]}>
         <ExperimentSelector onChange={handleExpChange} />
       </Form.Item>
+
       <Form.Item name="phase" rules={[{ required: true }]}>
         <PhaseSelector options={phaseOptions} onChange={handlePhaseChange} />
       </Form.Item>
+
       <Form.Item name="daterange" rules={[{ required: true }]}>
         <DateRangePicker />
       </Form.Item>
+
       <Form.Item name="category" rules={[{ required: true }]}>
         <Select
           style={{ width: 140 }}
@@ -122,22 +127,21 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
           <Option value="chat">Chat</Option>
         </Select>
       </Form.Item>
+
       <Form.Item name="metric" rules={[{ required: true }]}>
         <MetricSelector
           category={category}
-          value={form.getFieldValue('metric')}
           metricOptionsMap={metricOptionsMap}
+          value={form.getFieldValue('metric')}
           onChange={vals => form.setFieldsValue({ metric: vals })}
         />
       </Form.Item>
+
       <Form.Item>
         <Button type="primary" htmlType="submit" style={{ marginRight: 8 }}>
           Search
         </Button>
-        <Button
-          type="primary"
-          onClick={handleAllSearch}
-        >
+        <Button type="primary" onClick={handleAllSearch}>
           All Search
         </Button>
       </Form.Item>

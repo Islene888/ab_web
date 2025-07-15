@@ -7,7 +7,7 @@ export const metricOptionsMap = {
     { value: 'arppu', label: 'ARPPU' },
     { value: 'payment_rate_all', label: 'Payment Rate All' },
     { value: 'payment_rate_new', label: 'Payment Rate New' },
-    { value: 'AOV_new_day', label: 'AOV New Day1' },
+    { value: 'aov_new_day', label: 'AOV New Day1' },
     { value: 'cancel_sub_day', label: 'Cancel Sub Day3' },
     { value: 'subscribe_new_day_aov', label: 'Subscribe New Day1 AOV' },
   ],

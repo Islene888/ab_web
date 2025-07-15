@@ -16,7 +16,11 @@ export function AbTestTrendChart({ experimentName, startDate, endDate, metric, c
 
     const userTypeParam = userType ? `&user_type=${userType}` : '';
     const categoryParam = category ? `&category=${category}` : '';
-    fetch(`/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}${userTypeParam}&metric=${metric}${categoryParam}`)
+    const url = `/api/${metric}_trend?experiment_name=${experimentName}&start_date=${startDate}&end_date=${endDate}&metric=${metric}${userTypeParam}${categoryParam}`;
+
+    console.log("Fetch trend URL:", url);
+
+    fetch(url)
       .then(res => res.json())
       .then(res => setTrend(res))
       .catch(() => setTrend(null))

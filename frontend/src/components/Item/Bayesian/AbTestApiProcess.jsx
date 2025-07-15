@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchBayesian, fetchAllBayesian, fetchAllInOneBayesian } from '../../../api/AbtestApi';
 
 export function AbTestApiProcess({ mode = "single", ...props }) {
+console.log("AbTestApiProcess props: ", props);
   const {
     experimentName = "",
     startDate = "",
