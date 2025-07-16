@@ -4,6 +4,10 @@ __pycache__/
 *.log
 .venv/
 node_modules/
-frontend/
+# frontend/
 .vscode/
 .git/
+.idea/
+build/
+dist/
+.DS_Store
