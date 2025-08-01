@@ -4,9 +4,7 @@ from sqlalchemy import text
 
 CACHE_EXPIRE_HOURS = 6
 
-def get_abtest_cache(
-    engine_local, query_type, experiment_name, metric, category, start_date, end_date
-):
+def get_abtest_cache(engine_local, query_type, experiment_name, metric, category, start_date, end_date):
     sql = text("""
         SELECT result_json, updated_at
         FROM abtest_query_cache
@@ -37,10 +35,7 @@ def get_abtest_cache(
                 return json.loads(row[0])
     return None
 
-
-def set_abtest_cache(
-    engine_local, query_type, experiment_name, metric, category, start_date, end_date, result_json
-):
+def set_abtest_cache(engine_local, query_type, experiment_name, metric, category, start_date, end_date, result_json):
     delete_sql = text("""
         DELETE FROM abtest_query_cache
         WHERE query_type = :query_type
@@ -74,3 +69,13 @@ def set_abtest_cache(
             "result_json": json.dumps(result_json, ensure_ascii=False),
         })
 
+def write_snapshot_row(engine, row):
+    sql = text("""
+        INSERT INTO abtest_metric_snapshot
+        (experiment_name, metric_name, variation_id, event_date, value, revenue, orders, calc_time)
+        VALUES (:experiment_name, :metric_name, :variation_id, :event_date, :value, :revenue, :orders, NOW())
+        ON DUPLICATE KEY UPDATE
+            value=VALUES(value), revenue=VALUES(revenue), orders=VALUES(orders), calc_time=NOW()
+    """)
+    with engine.begin() as conn:
+        conn.execute(sql, row)

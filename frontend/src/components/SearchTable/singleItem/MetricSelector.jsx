@@ -1,24 +1,18 @@
 // src/components/SearchTable/MetricSelector.jsx
-
 import React from 'react';
 import { Select } from 'antd';
 const { Option } = Select;
 
-/**
- * Props:
- *   category: string
- *   value: array of metric values
- *   onChange(vals)
- *   metricOptionsMap: from api/growthbook
- */
-export default function MetricSelector({ category, value, onChange, metricOptionsMap }) {
+export default function MetricSelector({ category, value, onChange, metricOptionsMap, disabled, style }) {
   const opts = metricOptionsMap[category] || [];
   return (
     <Select
       placeholder="Metric"
       value={value}
       onChange={onChange}
-      style={{ width: 200 }}
+      style={style}
+      disabled={disabled}
+      allowClear
     >
       <Option value="all">All Metrics</Option>
       {opts.map(o => (

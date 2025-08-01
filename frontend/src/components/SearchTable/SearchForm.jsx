@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Form, Button, Spin, Select } from 'antd';
-import dayjs from 'dayjs'; // 确保 dayjs 已导入
+import dayjs from 'dayjs';
 import ExperimentSelector from './singleItem/ExperimentSelector';
 import PhaseSelector from './singleItem/PhaseSelector';
 import DateRangePicker from './singleItem/DateRangePicker';
@@ -12,44 +12,51 @@ import { fetchExperiments } from '../../api/GrowthbookApi';
 
 const { Option } = Select;
 
-export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearch, onAllSearch }) {
+export default function SearchForm({
+  initialExperiment,
+  initialPhaseIdx,
+  onSearch,
+  onAllSearch,
+  onCohortSearch,
+  cohortMetric,
+  setCohortMetric
+}) {
   const [form] = Form.useForm();
   const [experiments, setExperiments] = useState([]);
   const [phaseOptions, setPhaseOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('business');
+  const [category, setCategory] = useState(undefined);
+  const [metric, setMetric] = useState(undefined);
 
+  // 初始化 & 自动填充 Experiment → phase → 日期
   useEffect(() => {
     fetchExperiments().then(list => {
       setExperiments(list);
       setLoading(false);
-      // 预填充
-      const exp = list.find(e => e.experiment_name === initialExperiment);
-      if (exp) {
-        const opts = exp.phases.map((p, i) => ({
-          value: i,
-          ...p,
-          label: `${p.name || `Phase ${i + 1}`} (${p.dateStarted.split('T')[0]}~${p.dateEnded ? p.dateEnded.split('T')[0] : 'now'})`
-        }));
-        setPhaseOptions(opts);
-        const ph = opts[initialPhaseIdx] || opts[0];
-        form.setFieldsValue({
-          experimentName: exp.experiment_name,
-          phase: ph.value,
-          daterange: [
-            ph.dateStarted ? dayjs(ph.dateStarted) : null,
-            // ✅ 修改点 1: 增加对字符串 'now' 的判断
-            (ph.dateEnded && ph.dateEnded !== 'now') ? dayjs(ph.dateEnded) : dayjs()
-          ],
-          category: 'business',
-          metric: []
-        });
-        setCategory('business');
+      if (initialExperiment && list.length) {
+        const exp = list.find(e => e.experiment_name === initialExperiment);
+        if (exp) {
+          const opts = exp.phases.map((p, i) => ({
+            value: i,
+            ...p,
+            label: `${p.name || `Phase ${i + 1}`} (${p.dateStarted.split('T')[0]}~${p.dateEnded ? p.dateEnded.split('T')[0] : 'now'})`
+          }));
+          setPhaseOptions(opts);
+          const ph = opts[initialPhaseIdx] || opts[0];
+          form.setFieldsValue({
+            experimentName: exp.experiment_name,
+            phase: ph.value,
+            daterange: [
+              ph.dateStarted ? dayjs(ph.dateStarted) : null,
+              (ph.dateEnded && ph.dateEnded !== 'now') ? dayjs(ph.dateEnded) : dayjs()
+            ]
+          });
+        }
       }
     });
   }, [initialExperiment, initialPhaseIdx, form]);
 
-  // 切换实验
+  // 切换 Experiment 时更新 phaseOptions 和日期范围
   const handleExpChange = name => {
     const exp = experiments.find(e => e.experiment_name === name);
     if (!exp) return;
@@ -59,98 +66,153 @@ export default function SearchForm({ initialExperiment, initialPhaseIdx, onSearc
       label: `${p.name || `Phase ${i + 1}`} (${p.dateStarted.split('T')[0]}~${p.dateEnded ? p.dateEnded.split('T')[0] : 'now'})`
     }));
     setPhaseOptions(opts);
-    const firstPhase = opts[0]; // 取第一个阶段作为默认值
+    const first = opts[0];
     form.setFieldsValue({
-      phase: firstPhase.value,
+      phase: first.value,
       daterange: [
-        firstPhase.dateStarted ? dayjs(firstPhase.dateStarted) : null,
-        // ✅ 修改点 2: 增加对字符串 'now' 的判断
-        (firstPhase.dateEnded && firstPhase.dateEnded !== 'now') ? dayjs(firstPhase.dateEnded) : dayjs()
+        first.dateStarted ? dayjs(first.dateStarted) : null,
+        (first.dateEnded && first.dateEnded !== 'now') ? dayjs(first.dateEnded) : dayjs()
       ]
     });
   };
 
-  // 切换 phase
+  // 切换 Phase 时更新日期范围
   const handlePhaseChange = idx => {
     const p = phaseOptions.find(o => o.value === idx);
     if (!p) return;
     form.setFieldsValue({
       daterange: [
         p.dateStarted ? dayjs(p.dateStarted) : null,
-        // ✅ 修改点 3: 增加对字符串 'now' 的判断
         (p.dateEnded && p.dateEnded !== 'now') ? dayjs(p.dateEnded) : dayjs()
       ]
     });
   };
 
-  // 切换分区
-  const handleCategoryChange = val => {
-    setCategory(val);
-    form.setFieldsValue({ metric: [] });
+  // Cohort 与 Category/Metric 互斥逻辑
+  const isCohortDisabled = !!category || !!metric;
+  const isCategoryMetricDisabled = !!cohortMetric;
+  const canSearch =
+    (cohortMetric && !category && !metric) ||
+    (!cohortMetric && category && metric);
+
+  // Search 按钮提交
+  const handleFinish = values => {
+    if (cohortMetric) {
+      onCohortSearch && onCohortSearch({
+        experimentName: values.experimentName,
+        phase: values.phase,
+        daterange: values.daterange,
+        cohortMetric
+      });
+    } else {
+      onSearch && onSearch(values);
+    }
   };
 
-  // All Search 按钮事件
-  const handleAllSearch = () => {
-    const values = form.getFieldsValue();
+  // All Search 按钮
+  const handleAll = () => {
+    if (!category) return;
     onAllSearch && onAllSearch({
-      ...values,
-      metric: ['all']
+      ...form.getFieldsValue(),
+      metric: ['all'],
+      category,
+      cohortMetric: undefined,
+      mode: 'category_metric'
     });
   };
 
-  if (loading) {
-    return <Spin />;
-  }
+  if (loading) return <Spin />;
 
   return (
-    <Form
-      form={form}
-      layout="inline"
-      onFinish={onSearch}
-      initialValues={{ category: 'business', metric: [] }}
-    >
-      <Form.Item name="experimentName" rules={[{ required: true }]}>
-        <ExperimentSelector onChange={handleExpChange} />
-      </Form.Item>
+    <>
+      <style>
+        {`
+          .search-form-inline .ant-form-item {
+            margin-right: 16px;
+          }
+          .search-form-inline .ant-form-item:last-child {
+            margin-right: 0;
+          }
+        `}
+      </style>
+      <Form
+        form={form}
+        layout="inline"
+        onFinish={handleFinish}
+        style={{ width: '100%' }}
+        className="search-form-inline"
+      >
+        <Form.Item name="experimentName" rules={[{ required: true }]}>
+          <ExperimentSelector style={{ width: 180 }} onChange={handleExpChange} />
+        </Form.Item>
 
-      <Form.Item name="phase" rules={[{ required: true }]}>
-        <PhaseSelector options={phaseOptions} onChange={handlePhaseChange} />
-      </Form.Item>
+        <Form.Item name="phase" rules={[{ required: true }]}>
+          <PhaseSelector style={{ width: 150 }} options={phaseOptions} onChange={handlePhaseChange} />
+        </Form.Item>
 
-      <Form.Item name="daterange" rules={[{ required: true }]}>
-        <DateRangePicker />
-      </Form.Item>
+        <Form.Item name="daterange" rules={[{ required: true }]}>
+          <DateRangePicker style={{ width: 180, minWidth: 180 }} />
+        </Form.Item>
 
-      <Form.Item name="category" rules={[{ required: true }]}>
-        <Select
-          style={{ width: 140 }}
-          value={category}
-          onChange={handleCategoryChange}
-        >
-          <Option value="business">Business</Option>
-          <Option value="retention">Retention</Option>
-          <Option value="engagement">Engagement</Option>
-          <Option value="chat">Chat</Option>
-        </Select>
-      </Form.Item>
+        <Form.Item>
+          <Select
+            placeholder="Cohort"
+            value={cohortMetric}
+            onChange={val => setCohortMetric(val)}
+            disabled={isCohortDisabled}
+            style={{ width: 120 }}
+            allowClear
+          >
+            <Option value="ltv">LTV</Option>
+            <Option value="lt">LT</Option>
+            <Option value="retention">Retention</Option>
+          </Select>
+        </Form.Item>
 
-      <Form.Item name="metric" rules={[{ required: true }]}>
-        <MetricSelector
-          category={category}
-          metricOptionsMap={metricOptionsMap}
-          value={form.getFieldValue('metric')}
-          onChange={vals => form.setFieldsValue({ metric: vals })}
-        />
-      </Form.Item>
+        <Form.Item>
+          <Select
+            placeholder="Category"
+            value={category}
+            onChange={val => {
+              setCategory(val);
+              setMetric(undefined);
+              setCohortMetric(undefined);
+              form.setFieldsValue({ metric: undefined });
+            }}
+            disabled={isCategoryMetricDisabled}
+            style={{ width: 120 }}
+            allowClear
+          >
+            <Option value="business">Business</Option>
+            <Option value="retention">Retention</Option>
+            <Option value="engagement">Engagement</Option>
+            <Option value="chat">Chat</Option>
+          </Select>
+        </Form.Item>
 
-      <Form.Item>
-        <Button type="primary" htmlType="submit" style={{ marginRight: 8 }}>
-          Search
-        </Button>
-        <Button type="primary" onClick={handleAllSearch}>
-          All Search
-        </Button>
-      </Form.Item>
-    </Form>
+        <Form.Item>
+          <MetricSelector
+            category={category}
+            value={metric}
+            onChange={val => {
+              setMetric(val);
+              setCohortMetric(undefined);
+            }}
+            metricOptionsMap={metricOptionsMap}
+            disabled={!category || isCategoryMetricDisabled}
+            style={{ width: 140 }}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button type="primary" htmlType="submit" disabled={!canSearch}>
+            Search
+          </Button>
+          <Button style={{ marginLeft: 8 }} onClick={handleAll} disabled={!category}>
+            All Search
+          </Button>
+        </Form.Item>
+      </Form>
+    </>
   );
 }

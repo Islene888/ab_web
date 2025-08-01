@@ -36,48 +36,39 @@ def getval(row, field):
 @all_bp.route('/api/all_trend', methods=['GET'])
 def all_trend():
     import traceback
-    print("==== /api/all_trend 被调用 ====")
     try:
         experiment_name = request.args.get('experiment_name')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         category = request.args.get('category')
 
-        print(f"参数: experiment_name={experiment_name}, start_date={start_date}, end_date={end_date}, category={category}")
-
         if not experiment_name or not start_date or not end_date or not category:
-            print("缺少参数")
             return jsonify({"error": "参数缺失"}), 400
 
         metric_names = get_metric_names(category)
-        print(f"获取的指标: {metric_names}")
         if not metric_names:
-            print("未知的类别")
             return jsonify({"error": "未知的类别"}), 400
 
         local_engine = get_local_cache_engine()
-
-        # 优先查all缓存
-        cache = get_abtest_cache(
-            local_engine, "all_trend", experiment_name, "ALL", category, start_date, end_date
-        )
-        if cache:
-            print("命中缓存，直接返回")
-            return jsonify(cache)
-
         engine = get_db_connection()
         all_results = {}
+
         for metric in metric_names:
-            print(f"处理metric: {metric}")
             cfg = INDICATOR_CONFIG.get(metric)
             if not cfg:
-                print(f"未找到cfg: {metric}")
                 continue
+            true_category = cfg.get("category", "") or ""
+            # 查 metric 级别缓存（query_type="trend"，category=真实分类）
+            cache = get_abtest_cache(
+                local_engine, "trend", experiment_name, metric, true_category, start_date, end_date
+            )
+            if cache:
+                all_results[metric] = cache
+                continue
+
             try:
                 rows = cfg["fetch_func"](experiment_name, start_date, end_date, engine)
-                print(f"{metric} 获取到 rows 数量: {len(rows)}")
             except Exception as e:
-                print(f"执行fetch_func报错: {e}")
                 continue
 
             date_set = set()
@@ -113,13 +104,14 @@ def all_trend():
                 "dates": dates,
                 "series": series
             }
+            # 单独缓存每个 metric
+            set_abtest_cache(
+                local_engine, "trend", experiment_name, metric, true_category, start_date, end_date, all_results[metric]
+            )
 
-        print("最终 all_results:", all_results)
-        set_abtest_cache(
-            local_engine, "all_trend", experiment_name, "ALL", category, start_date, end_date, all_results
-        )
         return jsonify(all_results)
     except Exception as e:
+        import traceback
         print("接口整体报错:", e)
         print(traceback.format_exc())
         return jsonify({"error": "内部服务器错误", "msg": str(e)}), 500
@@ -137,23 +129,26 @@ def all_bayesian():
             return jsonify({"error": "参数缺失，请提供 experiment_name, start_date, end_date 和 category"}), 400
 
         local_engine = get_local_cache_engine()
-
-        cache = get_abtest_cache(
-            local_engine, "all_bayesian", experiment_name, "ALL", category, start_date, end_date
-        )
-        if cache:
-            return jsonify(cache)
+        engine = get_db_connection()
+        all_results = {}
 
         metric_names = get_metric_names(category)
         if not metric_names:
             return jsonify({"error": f"未知的类别: {category}"}), 400
 
-        engine = get_db_connection()
-        all_results = {}
         for metric in metric_names:
             cfg = INDICATOR_CONFIG.get(metric)
             if not cfg:
                 continue
+            true_category = cfg.get("category", "") or ""
+            # 查 metric 级别缓存（query_type="bayesian"，category=真实分类）
+            cache = get_abtest_cache(
+                local_engine, "bayesian", experiment_name, metric, true_category, start_date, end_date
+            )
+            if cache:
+                all_results[metric] = cache
+                continue
+
             rows = cfg["fetch_func"](experiment_name, start_date, end_date, engine)
             group_dict = defaultdict(list)
             group_revenue = defaultdict(float)
@@ -176,13 +171,18 @@ def all_bayesian():
                 summary["total_revenue"] = group_revenue[group]
                 summary["total_order"] = group_order[group]
                 metric_groups_summary.append(summary)
-            all_results[metric] = {"groups": metric_groups_summary}
+            all_results[metric] = {
+                "groups": metric_groups_summary,
+                "distribution": {str(k): v for k, v in group_dict.items()}
+            }
+            # 单独缓存每个 metric
+            set_abtest_cache(
+                local_engine, "bayesian", experiment_name, metric, true_category, start_date, end_date, all_results[metric]
+            )
 
-        set_abtest_cache(
-            local_engine, "all_bayesian", experiment_name, "ALL", category, start_date, end_date, all_results
-        )
         return jsonify(all_results)
     except Exception as e:
+        import traceback
         print("all_bayesian 报错:", e)
         print(traceback.format_exc())
         return jsonify({"error": "内部服务器错误", "msg": str(e)}), 500

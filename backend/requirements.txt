@@ -4,5 +4,4 @@ pymysql
 requests
 numpy
 python-dotenv
-
-
+requests

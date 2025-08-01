@@ -294,3 +294,13 @@ input.dark-input {
   color: #fff !important;
   font-weight: 700 !important;
 }
+
+
+/* form-bar.css 里加 */
+.ant-select-disabled .ant-select-selector {
+  background: #2e3047 !important;  /* 或你喜欢的深蓝 */
+  color: #9ba3b6 !important;       /* 字体浅灰，显得高级 */
+  border: 1.5px solid #35395a !important;
+  opacity: 0.8;
+}
+

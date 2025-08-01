@@ -1,9 +1,12 @@
 from ..sql_jobs.Business.aov_sql import fetch_group_aov_samples
 from ..sql_jobs.Business.arpu_sql import fetch_group_arpu_samples
 from ..sql_jobs.Business.arppu_sql import fetch_group_arppu_samples
+from ..sql_jobs.Business.cohort_arpu import fetch_cohort_arpu_heatmap
 from ..sql_jobs.Business.payment_rate_all_sql import fetch_group_payment_rate_all_samples
 from ..sql_jobs.Business.payment_rate_new_sql import fetch_group_payment_rate_new_samples
+from ..sql_jobs.Retention.cohort_retention import fetch_cohort_retention_heatmap
 from ..sql_jobs.chat_behavior.click_ratio_sql import fetch_group_click_ratio_samples
+from ..sql_jobs.chat_behavior.cohort_time_spend import fetch_cohort_time_spent_heatmap
 from ..sql_jobs.chat_behavior.explore_chat_start_rate import fetch_group_explore_chat_start_rate_samples
 from ..sql_jobs.chat_behavior.avg_bot_click import fetch_group_avg_bot_click_samples
 from ..sql_jobs.chat_behavior.first_chat_bot import fetch_group_explore_chat_start_rate_samples as fetch_group_first_chat_bot_samples
@@ -22,6 +25,10 @@ from ..sql_jobs.Business.subscribe_new import fetch_group_subscribe_new_samples
 from ..sql_jobs.Business.AOV_new import fetch_group_AOV_new_samples
 from ..sql_jobs.Retention.active_retention import fetch_active_user_retention
 from ..sql_jobs.Retention.new_retention import fetch_new_user_retention
+from ..sql_jobs.Retention.cul_retention import fetch_group_cumulative_retained_users_daily
+from ..sql_jobs.Business.cul_ltv import fetch_group_cumulative_ltv_daily
+from ..sql_jobs.chat_behavior.cul_lt import fetch_group_cumulative_lt_daily
+
 INDICATOR_CONFIG = {
     # 1. 用户价值相关指标 8个
     "aov": {
@@ -298,5 +305,63 @@ INDICATOR_CONFIG = {
         "revenue_field": "d15_retained_users",
         "order_field": "new_users",
         "category": "retention"
+    },
+    # --- Cumulative 累计指标 ---
+    "cumulative_retention": {
+        "fetch_func": fetch_group_cumulative_retained_users_daily,
+        "variation_field": "variation_id",  # SQL 返回字段名
+        "date_field": "event_date",
+        "value_field": "cumulative_retention_rate",  # 返回的留存率
+        "revenue_field": "cumulative_retained_users",  # 分子
+        "order_field": "cumulative_registered_users",  # 分母
+        "category": "retention"
+    },
+    "cumulative_ltv": {
+        "fetch_func": fetch_group_cumulative_ltv_daily,
+        "variation_field": "variation_id",
+        "date_field": "event_date",
+        "value_field": "cumulative_ltv",  # 累计LTV
+        "revenue_field": "cumulative_revenue",  # 总收入
+        "order_field": "cumulative_users",  # 总活跃人数
+        "category": "business"
+    },
+    "cumulative_lt": {
+        "fetch_func": fetch_group_cumulative_lt_daily,
+        "variation_field": "variation_id",
+        "date_field": "event_date",
+        "value_field": "cumulative_lt",  # 累计LT
+        "revenue_field": "cumulative_time_minutes",  # 总分钟数
+        "order_field": "cumulative_users",  # 总活跃人数
+        "category": "engagement"
+    },
+    "cohort_arpu": {
+        "fetch_func": fetch_cohort_arpu_heatmap,
+        "variation_field": "variation_id",
+        "date_field": "register_date",
+        "value_field": "arpu",  # 热力图 cell 值
+        "revenue_field": "total_revenue",  # 也可以是 arpu，只要能输出
+        "order_field": "active_users",
+        "category": "business"
+    },
+    "cohort_retention_heatmap": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_cohort_retention_heatmap(experiment_name, start_date, end_date, engine, max_days=30),
+        "variation_field": "variation_id",
+        "date_field": "register_date",
+        "value_field": "retention_rate",
+        "revenue_field": "retained_users",
+        "order_field": "new_users",
+        "category": "retention"
+    },
+    "cohort_time_spent_heatmap": {
+        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_cohort_time_spent_heatmap(experiment_name, start_date, end_date, engine, max_days=30),
+        "variation_field": "variation_id",
+        "date_field": "register_date",
+        "value_field": "avg_time_spent_minutes",
+        "revenue_field": "total_time_spent",
+        "order_field": "active_users",
+        "category": "chat"
     }
+
+
+
 }

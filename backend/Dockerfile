@@ -12,4 +12,4 @@ COPY ./backend ./backend
 ENV PYTHONPATH "${PYTHONPATH}:/app"
 
 
-CMD ["python", "-m", "backend.main"]
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]

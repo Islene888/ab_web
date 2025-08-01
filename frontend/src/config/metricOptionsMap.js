@@ -29,15 +29,23 @@ export const metricOptionsMap = {
     { value: 'new_conversation', label: 'New Conversation' },
     { value: 'regen', label: 'Regen' },
   ],
-retention: [
-  { value: 'all_retention_d1', label: 'Active User Day 1 Retention' },
-  { value: 'all_retention_d3', label: 'Active User Day 3 Retention' },
-  { value: 'all_retention_d7', label: 'Active User Day 7 Retention' },
-  { value: 'all_retention_d15', label: 'Active User Day 15 Retention' },
-  { value: 'new_retention_d1', label: 'New User Day 1 Retention' },
-  { value: 'new_retention_d3', label: 'New User Day 3 Retention' },
-  { value: 'new_retention_d7', label: 'New User Day 7 Retention' },
-  { value: 'new_retention_d15', label: 'New User Day 15 Retention' },
+  retention: [
+    { value: 'all_retention_d1', label: 'Active User Day 1 Retention' },
+    { value: 'all_retention_d3', label: 'Active User Day 3 Retention' },
+    { value: 'all_retention_d7', label: 'Active User Day 7 Retention' },
+    { value: 'all_retention_d15', label: 'Active User Day 15 Retention' },
+    { value: 'new_retention_d1', label: 'New User Day 1 Retention' },
+    { value: 'new_retention_d3', label: 'New User Day 3 Retention' },
+    { value: 'new_retention_d7', label: 'New User Day 7 Retention' },
+    { value: 'new_retention_d15', label: 'New User Day 15 Retention' },
+  ],
+  cohort: [
+  { value: 'cumulative_retention_trend', label: 'Cul Retention Trend' },
+  { value: 'cumulative_ltv_trend', label: 'Cul LTV Trend' },
+  { value: 'cumulative_lt_trend', label: 'Cul LT Trend' },
+  { value: 'all_retention_d1_heatmap', label: 'D1 Retention Heatmap' },
+  { value: 'arpu_heatmap', label: 'ARPU Heatmap' },
+  { value: 'time_spend_heatmap', label: 'Time Spent Heatmap' },
 ]};
 
 
