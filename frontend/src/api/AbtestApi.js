@@ -24,3 +24,18 @@ export async function fetchAllInOneBayesian({ experimentName, startDate, endDate
   return res.json();
 }
 
+
+
+export async function fetchCohortTrend({ endpoint, experimentName, startDate, endDate }) {
+  const url = `/api/cohort/${endpoint}_trend?experiment_name=${encodeURIComponent(experimentName)}&start_date=${startDate}&end_date=${endDate}&metric=${endpoint}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("API error");
+  return res.json();
+}
+
+export async function fetchCohortHeatmap({ endpoint, experimentName, startDate, endDate }) {
+  const url = `/api/cohort/${endpoint}_heatmap?experiment_name=${encodeURIComponent(experimentName)}&start_date=${startDate}&end_date=${endDate}&metric=${endpoint}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("API error");
+  return res.json();
+}

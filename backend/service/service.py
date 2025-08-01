@@ -31,7 +31,7 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
     end_date = request.args.get('end_date')
     metric = request.args.get('metric', '')
     category = request.args.get('category', '')
-    mode = request.args.get('mode', 'single')
+    mode = 'bayesian'
     if not experiment_name or not start_date or not end_date:
         return jsonify({"error": "请提供 experiment_name, start_date, end_date 参数"}), 400
 
@@ -47,7 +47,9 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
         end_date=end_date
     )
     if cache:
+        print(f"[CACHE-HIT] [{mode}] [{metric}] 命中缓存，直接返回")
         return jsonify(cache)
+    print(f"[CACHE-MISS] [{mode}] [{metric}] 未命中缓存，开始实时计算...")
 
     # 查主数据仓库
     engine = get_db_connection()
@@ -88,6 +90,7 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
         end_date=end_date,
         result_json=result
     )
+    print(f"[CACHE-SET] [{mode}] [{metric}] 实时计算完成，已写入缓存")
     return jsonify(result)
 
 def generic_trend_api(fetch_func, value_field, revenue_field, order_field, variation_field=None, date_field=None):
