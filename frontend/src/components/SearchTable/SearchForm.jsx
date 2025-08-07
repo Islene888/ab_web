@@ -25,8 +25,6 @@ export default function SearchForm({
   const [experiments, setExperiments] = useState([]);
   const [phaseOptions, setPhaseOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState(undefined);
-  const [metric, setMetric] = useState(undefined);
 
   // 初始化 & 自动填充 Experiment → phase → 日期
   useEffect(() => {
@@ -72,8 +70,12 @@ export default function SearchForm({
       daterange: [
         first.dateStarted ? dayjs(first.dateStarted) : null,
         (first.dateEnded && first.dateEnded !== 'now') ? dayjs(first.dateEnded) : dayjs()
-      ]
+      ],
+      // 切换实验时自动清空类别和指标
+      category: undefined,
+      metric: undefined
     });
+    setCohortMetric(undefined); // 切换实验时也清空 cohort
   };
 
   // 切换 Phase 时更新日期范围
@@ -89,11 +91,13 @@ export default function SearchForm({
   };
 
   // Cohort 与 Category/Metric 互斥逻辑
-  const isCohortDisabled = !!category || !!metric;
+  const watchCategory = Form.useWatch('category', form);
+  const watchMetric = Form.useWatch('metric', form);
+  const isCohortDisabled = !!watchCategory || !!watchMetric;
   const isCategoryMetricDisabled = !!cohortMetric;
   const canSearch =
-    (cohortMetric && !category && !metric) ||
-    (!cohortMetric && category && metric);
+    (cohortMetric && !watchCategory && !watchMetric) ||
+    (!cohortMetric && watchCategory && watchMetric);
 
   // Search 按钮提交
   const handleFinish = values => {
@@ -105,17 +109,17 @@ export default function SearchForm({
         cohortMetric
       });
     } else {
-      onSearch && onSearch(values);
+      onSearch && onSearch(values); // values 里现在有 category/metric 字段
     }
   };
 
   // All Search 按钮
   const handleAll = () => {
-    if (!category) return;
+    const values = form.getFieldsValue();
+    if (!values.category) return;
     onAllSearch && onAllSearch({
-      ...form.getFieldsValue(),
-      metric: ['all'],
-      category,
+      ...values,
+      metric: 'all', // 一定是字符串 'all'
       cohortMetric: undefined,
       mode: 'category_metric'
     });
@@ -169,15 +173,14 @@ export default function SearchForm({
           </Select>
         </Form.Item>
 
-        <Form.Item>
+        {/* Category 和 Metric 都挂载到 Form.Item */}
+        <Form.Item name="category" rules={[{ required: !cohortMetric, message: '请选择 Category' }]}>
           <Select
             placeholder="Category"
-            value={category}
             onChange={val => {
-              setCategory(val);
-              setMetric(undefined);
-              setCohortMetric(undefined);
+              // 切换 Category 时自动清空 Metric 和 Cohort
               form.setFieldsValue({ metric: undefined });
+              setCohortMetric(undefined);
             }}
             disabled={isCategoryMetricDisabled}
             style={{ width: 120 }}
@@ -190,16 +193,14 @@ export default function SearchForm({
           </Select>
         </Form.Item>
 
-        <Form.Item>
+        <Form.Item name="metric" rules={[{ required: !cohortMetric, message: '请选择 Metric' }]}>
           <MetricSelector
-            category={category}
-            value={metric}
-            onChange={val => {
-              setMetric(val);
+            category={form.getFieldValue('category')}
+            onChange={() => {
               setCohortMetric(undefined);
             }}
             metricOptionsMap={metricOptionsMap}
-            disabled={!category || isCategoryMetricDisabled}
+            disabled={!form.getFieldValue('category') || isCategoryMetricDisabled}
             style={{ width: 140 }}
           />
         </Form.Item>
@@ -208,7 +209,7 @@ export default function SearchForm({
           <Button type="primary" htmlType="submit" disabled={!canSearch}>
             Search
           </Button>
-          <Button style={{ marginLeft: 8 }} onClick={handleAll} disabled={!category}>
+          <Button style={{ marginLeft: 8 }} onClick={handleAll} disabled={!form.getFieldValue('category')}>
             All Search
           </Button>
         </Form.Item>

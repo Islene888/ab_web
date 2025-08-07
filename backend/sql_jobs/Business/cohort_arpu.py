@@ -7,94 +7,86 @@ def fetch_cohort_arpu_heatmap(experiment_name, start_date, end_date, engine):
         "variation_id": ...,
         "register_date": ...,
         "cohort_day": ...,
-        "arpu": ...,
+        "ltv": ...,
         "total_revenue": ...,
         "active_users": ...,
       }, ...
     ]
+    备注：register_date 恒等于 start_date，是 cohort 分析的“定基快照”模式
     """
-    query = f"""
-    WITH
-      -- 找到所有 cohort 用户的注册日/首活日
-      first_active AS (
-        SELECT
-          e.user_id,
-          e.variation_id,
-          MIN(a.active_date) AS register_date
-        FROM flow_wide_info.tbl_wide_active_user_app_info a
-        JOIN (
-          SELECT user_id, variation_id
-          FROM (
-            SELECT user_id, variation_id,
-                   ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY timestamp_assigned ASC) AS rn
-            FROM flow_wide_info.tbl_wide_experiment_assignment_hi
-            WHERE experiment_id = '{experiment_name}'
-          ) t
-          WHERE rn = 1
-        ) e ON a.user_id = e.user_id
-        WHERE a.active_date BETWEEN '{start_date}' AND '{end_date}'
-        GROUP BY e.user_id, e.variation_id
+    query = """
+    WITH 
+      -- 1. 所有 start_date 之前就进入实验的用户，作为“定基 cohort”
+      experiment_users AS (
+        SELECT user_id, variation_id
+        FROM (
+          SELECT user_id, variation_id,
+                 ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY timestamp_assigned ASC) AS rn
+          FROM flow_wide_info.tbl_wide_experiment_assignment_hi
+          WHERE experiment_id = :experiment_name
+            AND timestamp_assigned < DATE_ADD(:start_date, INTERVAL 1 DAY)
+        ) t
+        WHERE rn = 1
       ),
-      -- 找到所有活跃事件，匹配cohort
-      user_events AS (
-        SELECT
-          fa.variation_id,
-          fa.register_date,
-          se.event_date,
-          DATEDIFF(se.event_date, fa.register_date) AS cohort_day,
-          se.user_id
-        FROM first_active fa
-        JOIN flow_event_info.tbl_app_session_info se
-          ON fa.user_id = se.user_id
-         AND se.event_date BETWEEN '{start_date}' AND '{end_date}'
-         AND se.event_date >= fa.register_date
-         AND DATEDIFF(se.event_date, fa.register_date) BETWEEN 0 AND 29  -- 最多看30天
+      -- 2. 每组 cohort 大小
+      cohort_size AS (
+        SELECT variation_id, COUNT(user_id) AS cohort_users
+        FROM experiment_users
+        GROUP BY variation_id
       ),
-      -- 收入表 (subscribe + order + 广告)
-      user_revenue AS (
+      -- 3. 这群用户在分析期内的全部收入（订阅、内购、广告）
+      all_user_revenue AS (
+        SELECT user_id, event_date, revenue 
+        FROM flow_event_info.tbl_app_event_subscribe
+        WHERE event_date BETWEEN :start_date AND :end_date
+        UNION ALL
+        SELECT user_id, event_date, revenue 
+        FROM flow_event_info.tbl_app_event_currency_purchase
+        WHERE event_date BETWEEN :start_date AND :end_date
+        UNION ALL
+        SELECT user_id, event_date, ad_revenue AS revenue 
+        FROM flow_event_info.tbl_app_event_ads_impression
+        WHERE event_date BETWEEN :start_date AND :end_date
+      ),
+      -- 4. 每天每组收入聚合
+      revenue_per_day AS (
         SELECT
-          fa.user_id,
-          fa.variation_id,
-          fa.register_date,
-          e.event_date,
-          DATEDIFF(e.event_date, fa.register_date) AS cohort_day,
-          COALESCE(s.sub_revenue, 0) + COALESCE(o.order_revenue, 0) + COALESCE(a.ad_revenue, 0) AS total_revenue
-        FROM first_active fa
-        JOIN flow_event_info.tbl_app_session_info e
-          ON fa.user_id = e.user_id AND e.event_date >= fa.register_date AND e.event_date BETWEEN '{start_date}' AND '{end_date}'
-        LEFT JOIN (
-          SELECT user_id, event_date, SUM(revenue) AS sub_revenue
-          FROM flow_event_info.tbl_app_event_subscribe
-          WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
-          GROUP BY user_id, event_date
-        ) s ON fa.user_id = s.user_id AND e.event_date = s.event_date
-        LEFT JOIN (
-          SELECT user_id, event_date, SUM(revenue) AS order_revenue
-          FROM flow_event_info.tbl_app_event_currency_purchase
-          WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
-          GROUP BY user_id, event_date
-        ) o ON fa.user_id = o.user_id AND e.event_date = o.event_date
-        LEFT JOIN (
-          SELECT user_id, event_date, SUM(ad_revenue) AS ad_revenue
-          FROM flow_event_info.tbl_app_event_ads_impression
-          WHERE event_date BETWEEN '{start_date}' AND '{end_date}'
-          GROUP BY user_id, event_date
-        ) a ON fa.user_id = a.user_id AND e.event_date = a.event_date
+          eu.variation_id,
+          r.event_date,
+          SUM(r.revenue) AS day_revenue
+        FROM experiment_users eu
+        JOIN all_user_revenue r ON eu.user_id = r.user_id
+        GROUP BY eu.variation_id, r.event_date
+      ),
+      -- 5. 计算 cohort_day 以及累计
+      ltv_cumulative AS (
+        SELECT
+          variation_id,
+          event_date,
+          DATEDIFF(event_date, :start_date) AS cohort_day,
+          SUM(day_revenue) OVER (PARTITION BY variation_id ORDER BY event_date) AS cumulative_revenue
+        FROM revenue_per_day
       )
-    -- 聚合输出 cohort 表
+    -- 输出
     SELECT
-      ur.variation_id,
-      ur.register_date,
-      ur.cohort_day,
-      SUM(ur.total_revenue) AS total_revenue,
-      COUNT(DISTINCT ur.user_id) AS active_users,
-      ROUND(SUM(ur.total_revenue) / NULLIF(COUNT(DISTINCT ur.user_id), 0), 4) AS arpu
-    FROM user_revenue ur
-    GROUP BY ur.variation_id, ur.register_date, ur.cohort_day
-    ORDER BY ur.variation_id, ur.register_date, ur.cohort_day
-    ;
+      l.variation_id,
+      :start_date AS register_date,      -- 固定起点
+      l.cohort_day,
+      ROUND(l.cumulative_revenue / NULLIF(cs.cohort_users, 0), 4) AS ltv,
+      l.cumulative_revenue AS total_revenue,
+      cs.cohort_users AS active_users
+    FROM ltv_cumulative l
+    JOIN cohort_size cs ON l.variation_id = cs.variation_id
+    ORDER BY l.variation_id, l.cohort_day;
     """
+
+    params = {
+        "experiment_name": experiment_name,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
     with engine.connect() as conn:
-        df = conn.execute(text(query)).fetchall()
-    print(f"[COHORT-ARPU-HEATMAP] 实验 {experiment_name} 查询到 {len(df)} 条记录")
-    return df
+        df = conn.execute(text(query), params).fetchall()
+    result = [dict(row) for row in df]
+    print(f"[COHORT-CUMULATIVE-LTV-HEATMAP] 实验 {experiment_name} 查询到 {len(result)} 条记录")
+    return result

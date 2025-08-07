@@ -3,26 +3,54 @@ from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, text
 import os
 import urllib.parse
+import math
 
 from ..utils.cache_utils import get_abtest_cache, set_abtest_cache
 from ..utils.engine_utils import get_local_cache_engine, get_db_connection
 
 app = Flask(__name__)
 
+def replace_nan_inf(obj):
+    """递归替换所有 NaN, inf, -inf 为 None。"""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, list):
+        return [replace_nan_inf(x) for x in obj]
+    elif isinstance(obj, dict):
+        return {k: replace_nan_inf(v) for k, v in obj.items()}
+    else:
+        return obj
 
 def bayesian_summary(samples):
     samples = np.array(samples)
-    mean = np.mean(samples)
-    std = np.std(samples, ddof=1)
+    if len(samples) == 0 or np.isnan(samples).all():
+        return {
+            "mean": None,
+            "std": None,
+            "n": 0,
+            "posterior_samples": [],
+            "credible_interval": [None, None]
+        }
+    mean = np.nanmean(samples)
+    std = np.nanstd(samples, ddof=1)
     n = len(samples)
-    posterior_samples = np.random.normal(mean, std / np.sqrt(n), 1000)
+    # 避免除以0或nan
+    if n == 0 or std == 0 or np.isnan(std):
+        posterior_samples = [float(mean)] * 1000
+    else:
+        posterior_samples = np.random.normal(mean, std / np.sqrt(n), 1000)
     ci_lower, ci_upper = np.percentile(posterior_samples, [2.5, 97.5])
     return {
-        "mean": float(mean),
-        "std": float(std),
+        "mean": float(mean) if not np.isnan(mean) else None,
+        "std": float(std) if not np.isnan(std) else None,
         "n": int(n),
-        "posterior_samples": posterior_samples.tolist(),
-        "credible_interval": [float(ci_lower), float(ci_upper)]
+        "posterior_samples": [float(x) if not np.isnan(x) else None for x in posterior_samples],
+        "credible_interval": [
+            float(ci_lower) if not np.isnan(ci_lower) else None,
+            float(ci_upper) if not np.isnan(ci_upper) else None,
+        ]
     }
 
 def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, variation_field=None, date_field=None):
@@ -35,9 +63,7 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
     if not experiment_name or not start_date or not end_date:
         return jsonify({"error": "请提供 experiment_name, start_date, end_date 参数"}), 400
 
-    # 本地缓存引擎
     cache_engine = get_local_cache_engine()
-    # 查询本地缓存
     cache = get_abtest_cache(
         cache_engine, query_type=mode,
         experiment_name=experiment_name,
@@ -48,10 +74,9 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
     )
     if cache:
         print(f"[CACHE-HIT] [{mode}] [{metric}] 命中缓存，直接返回")
-        return jsonify(cache)
+        return jsonify(replace_nan_inf(cache))
     print(f"[CACHE-MISS] [{mode}] [{metric}] 未命中缓存，开始实时计算...")
 
-    # 查主数据仓库
     engine = get_db_connection()
     rows = fetch_func(experiment_name, start_date, end_date, engine)
     print(f"实验 {experiment_name} 查询到 {len(rows)} 条记录")
@@ -80,7 +105,6 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
         summary["total_revenue"] = group_revenue[group]
         summary["total_order"] = group_order[group]
         result["groups"].append(summary)
-    # 存本地缓存
     set_abtest_cache(
         cache_engine, query_type=mode,
         experiment_name=experiment_name,
@@ -91,7 +115,7 @@ def generic_bayesian_api(fetch_func, value_field, revenue_field, order_field, va
         result_json=result
     )
     print(f"[CACHE-SET] [{mode}] [{metric}] 实时计算完成，已写入缓存")
-    return jsonify(result)
+    return jsonify(replace_nan_inf(result))
 
 def generic_trend_api(fetch_func, value_field, revenue_field, order_field, variation_field=None, date_field=None):
     from backend.service.config import INDICATOR_CONFIG  # 自动查 category
@@ -106,7 +130,6 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
 
     # ----------- 自动兜底补 category ----------
     if not category and metric:
-        # config 里查当前 metric 的 category（如 business/retention/chat/...）
         category = INDICATOR_CONFIG.get(metric, {}).get("category", "")
     # ------------------------------------------
 
@@ -120,7 +143,7 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
         end_date=end_date
     )
     if cache:
-        return jsonify(cache)
+        return jsonify(replace_nan_inf(cache))
 
     engine = get_db_connection()
     rows = fetch_func(experiment_name, start_date, end_date, engine)
@@ -162,8 +185,7 @@ def generic_trend_api(fetch_func, value_field, revenue_field, order_field, varia
         end_date=end_date,
         result_json=result
     )
-    return jsonify(result)
-
+    return jsonify(replace_nan_inf(result))
 
 def make_bayesian_api(cfg):
     def api_func():

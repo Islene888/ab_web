@@ -334,32 +334,47 @@ INDICATOR_CONFIG = {
         "order_field": "cumulative_users",  # 总活跃人数
         "category": "engagement"
     },
+    # "cohort_arpu": {
+    #     "fetch_func": fetch_cohort_arpu_heatmap,
+    #     "variation_field": "variation_id",
+    #     "date_field": "register_date",
+    #     "value_field": "arpu",
+    #     "revenue_field": "total_revenue",
+    #     "order_field": "active_users",
+    #     "category": "business"
+    # },
     "cohort_arpu": {
         "fetch_func": fetch_cohort_arpu_heatmap,
         "variation_field": "variation_id",
         "date_field": "register_date",
-        "value_field": "arpu",  # 热力图 cell 值
-        "revenue_field": "total_revenue",  # 也可以是 arpu，只要能输出
+        "extra_field": "cohort_day",
+        "value_field": "ltv",
+        "revenue_field": "total_revenue",
         "order_field": "active_users",
-        "category": "business"
+        "category": "business",
+        "result_type": "heatmap"
     },
     "cohort_retention_heatmap": {
-        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_cohort_retention_heatmap(experiment_name, start_date, end_date, engine, max_days=30),
+        "fetch_func": fetch_cohort_retention_heatmap,
         "variation_field": "variation_id",
         "date_field": "register_date",
+        "extra_field": "cohort_day",
         "value_field": "retention_rate",
         "revenue_field": "retained_users",
         "order_field": "new_users",
-        "category": "retention"
+        "category": "retention",
+        "result_type": "heatmap"
     },
     "cohort_time_spent_heatmap": {
-        "fetch_func": lambda experiment_name, start_date, end_date, engine: fetch_cohort_time_spent_heatmap(experiment_name, start_date, end_date, engine, max_days=30),
+        "fetch_func": fetch_cohort_time_spent_heatmap,
         "variation_field": "variation_id",
         "date_field": "register_date",
+        "extra_field": "cohort_day",
         "value_field": "avg_time_spent_minutes",
         "revenue_field": "total_time_spent",
         "order_field": "active_users",
-        "category": "chat"
+        "category": "chat",
+        "result_type": "heatmap"
     }
 
 

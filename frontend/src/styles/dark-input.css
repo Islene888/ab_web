@@ -45,3 +45,7 @@ input.dark-input::placeholder {
   color: #fff !important;
   opacity: 1;
 }
+.ant-card-head {
+  border-bottom: none !important;
+}
+
