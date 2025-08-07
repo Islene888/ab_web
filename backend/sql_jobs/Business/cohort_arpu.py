@@ -87,6 +87,6 @@ def fetch_cohort_arpu_heatmap(experiment_name, start_date, end_date, engine):
     }
     with engine.connect() as conn:
         df = conn.execute(text(query), params).fetchall()
-    result = [dict(row) for row in df]
+    result = [dict(row._mapping) for row in df]
     print(f"[COHORT-CUMULATIVE-LTV-HEATMAP] 实验 {experiment_name} 查询到 {len(result)} 条记录")
     return result

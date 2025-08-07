@@ -76,8 +76,7 @@ def fetch_cohort_retention_heatmap(experiment_name, start_date, end_date, engine
 
     with engine.connect() as conn:
         result_proxy = conn.execute(text(query), params)
-        # 将 SQLAlchemy 的 RowProxy 对象转换为标准的字典列表
-        all_results = [dict(row) for row in result_proxy]
+        all_results = [dict(row._mapping) for row in result_proxy]
 
     print(f"[COHORT-RETENTION-HEATMAP - 定点快照模式] 实验 {experiment_name} 查询到 {len(all_results)} 条记录")
     return all_results

@@ -71,6 +71,6 @@ def fetch_group_cumulative_retained_users_daily(experiment_name, start_date, end
     params = {"experiment_name": experiment_name, "start_date": start_date, "end_date": end_date}
     with engine.connect() as conn:
         result_proxy = conn.execute(text(query), params)
-        all_results = [dict(row) for row in result_proxy]
+        all_results = [dict(row._mapping) for row in result_proxy]
     print(f"Cumulative Retained Users (每日): 实验 {experiment_name} 单次高效查询到 {len(all_results)} 条记录")
     return all_results

@@ -79,5 +79,7 @@ def fetch_cohort_time_spent_heatmap(experiment_name, start_date, end_date, engin
     }
     with engine.connect() as conn:
         df = conn.execute(text(query), params).fetchall()
-    print(f"[COHORT-TIME-SPENT-HEATMAP] 实验 {experiment_name} 查询到 {len(df)} 条记录")
-    return df
+    result = [dict(row._mapping) for row in df]
+    print(f"[COHORT-TIME-SPENT-HEATMAP] 实验 {experiment_name} 查询到 {len(result)} 条记录")
+    return result
+
