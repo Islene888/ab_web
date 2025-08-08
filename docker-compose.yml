@@ -1,25 +1,105 @@
+#version: '3.8'
+#
+#services:
+#  # ... (backend, frontend, postgres 服务保持不变)
+#  backend:
+#    build:
+#      context: .
+#      dockerfile: backend/Dockerfile
+#    ports:
+#      - "5001:5000"
+#    environment:
+#      - FLASK_APP=backend/main.py
+#    env_file:
+#      - ./backend/.env
+#    restart: on-failure
+#
+#  frontend:
+#    build:
+#      context: ./frontend
+#      dockerfile: Dockerfile
+#    ports:
+#      - "3000:80"
+#    depends_on:
+#      - backend
+#    restart: always
+#
+#  postgres:
+#    image: postgres:15
+#    environment:
+#      POSTGRES_USER: airflow
+#      POSTGRES_PASSWORD: airflow
+#      POSTGRES_DB: airflow
+#    volumes:
+#      - postgres-db-volume:/var/lib/postgresql/data
+#    restart: always
+#
+#  airflow-webserver:
+#    image: apache/airflow:2.7.3
+#    restart: always
+#    depends_on:
+#      - postgres
+#    environment:
+#      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+#      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+#      AIRFLOW__WEBSERVER__SECRET_KEY: mysecretkey
+#      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+#      PYTHONPATH: /opt/airflow
+#      # --- 在这里添加 pymysql ---
+#      _PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
+#    volumes:
+#      - ./dags:/opt/airflow/dags
+#      - ./backend:/opt/airflow/backend
+#      - ./logs:/opt/airflow/logs
+#    ports:
+#      - "8080:8080"
+#    command: webserver
+#
+#  airflow-scheduler:
+#    image: apache/airflow:2.7.3
+#    restart: always
+#    depends_on:
+#      - airflow-webserver
+#    environment:
+#      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+#      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+#      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+#      PYTHONPATH: /opt/airflow
+#      _PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
+#    volumes:
+#      - ./dags:/opt/airflow/dags
+#      - ./backend:/opt/airflow/backend
+#      - ./logs:/opt/airflow/logs
+#    command: scheduler
+#
+#volumes:
+#  postgres-db-volume:
+
 version: '3.8'
 
 services:
-  # ... (backend, frontend, postgres 服务保持不变)
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "5001:5000"
-    environment:
-      - FLASK_APP=backend/main.py
+      - "8080:8080"                # 和 gunicorn 保持一致
     env_file:
       - ./backend/.env
     restart: on-failure
+    # 可选：健康检查
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "3000:80"                  # 浏览器打开 http://localhost:3000
     depends_on:
       - backend
     restart: always
@@ -42,17 +122,15 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: mysecretkey
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       PYTHONPATH: /opt/airflow
-      # --- 在这里添加 pymysql ---
       _PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./backend:/opt/airflow/backend
       - ./logs:/opt/airflow/logs
     ports:
-      - "8080:8080"
+      - "18080:8080"               # 避免和 backend 冲突
     command: webserver
 
   airflow-scheduler:
@@ -65,7 +143,6 @@ services:
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       PYTHONPATH: /opt/airflow
-      # --- 在这里添加 pymysql ---
       _PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
     volumes:
       - ./dags:/opt/airflow/dags
